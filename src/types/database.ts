@@ -379,6 +379,78 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["purchase_items"]["Insert"]>;
         Relationships: [];
       };
+      purchase_slip_attachments: {
+        Row: {
+          id: string;
+          purchase_slip_id: string;
+          file_name: string;
+          file_path: string;
+          file_type: string | null;
+          file_size: number | null;
+          type: Database["public"]["Enums"]["attachment_type"];
+          uploaded_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          purchase_slip_id: string;
+          file_name: string;
+          file_path: string;
+          file_type?: string | null;
+          file_size?: number | null;
+          type?: Database["public"]["Enums"]["attachment_type"];
+          uploaded_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["purchase_slip_attachments"]["Insert"]>;
+        Relationships: [];
+      };
+      purchase_slips: {
+        Row: {
+          id: string;
+          season_id: string;
+          farmer_id: string;
+          broker_id: string;
+          transport_trip_id: string | null;
+          rice_type_id: string;
+          authorization_letter_id: string | null;
+          authorized_receiver_broker_id: string | null;
+          purchase_date: string;
+          weight_kg: number;
+          unit_price: number;
+          total_amount: number;
+          broker_commission_per_kg: number;
+          broker_commission_total: number;
+          payment_status: Database["public"]["Enums"]["payment_status"];
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          season_id: string;
+          farmer_id: string;
+          broker_id: string;
+          transport_trip_id?: string | null;
+          rice_type_id: string;
+          authorization_letter_id?: string | null;
+          authorized_receiver_broker_id?: string | null;
+          purchase_date: string;
+          weight_kg: number;
+          unit_price: number;
+          total_amount?: number;
+          broker_commission_per_kg?: number;
+          broker_commission_total?: number;
+          payment_status?: Database["public"]["Enums"]["payment_status"];
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["purchase_slips"]["Insert"]>;
+        Relationships: [];
+      };
       rice_types: {
         Row: {
           id: string;

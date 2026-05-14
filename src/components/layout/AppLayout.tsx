@@ -6,6 +6,7 @@ import {
   Flag,
   Home,
   Landmark,
+  LogOut,
   Map,
   PackageCheck,
   ReceiptText,
@@ -14,7 +15,8 @@ import {
   Users,
   Wheat,
 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthProvider";
 
 const navigation = [
   { to: "/dashboard", label: "Tổng quan", icon: Home },
@@ -22,8 +24,9 @@ const navigation = [
   { to: "/seasons", label: "Mùa vụ", icon: Flag },
   { to: "/farmers", label: "Nông dân", icon: Sprout },
   { to: "/brokers", label: "Cò lúa", icon: Users },
+  { to: "/purchase-slips", label: "Phiếu mua", icon: ReceiptText },
   { to: "/purchase-batches", label: "Đợt mua", icon: PackageCheck },
-  { to: "/purchase-items", label: "Phiếu mua", icon: ReceiptText },
+  { to: "/purchase-items", label: "Mục mua cũ", icon: ReceiptText },
   { to: "/transporter-boats", label: "Ghe vận chuyển", icon: Truck },
   { to: "/transport-trips", label: "Chuyến ghe", icon: Truck },
   { to: "/transport-routes", label: "Tuyến vận chuyển", icon: Map },
@@ -35,6 +38,14 @@ const navigation = [
 ];
 
 export function AppLayout() {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await signOut();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Điều hướng chính">
@@ -54,6 +65,13 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
+
+        <div className="sidebar-footer">
+          <button className="logout-button" type="button" onClick={() => void handleLogout()}>
+            <LogOut aria-hidden="true" size={19} strokeWidth={2} />
+            <span>Đăng xuất</span>
+          </button>
+        </div>
       </aside>
 
       <main className="main-content">

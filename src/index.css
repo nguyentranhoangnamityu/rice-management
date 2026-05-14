@@ -43,6 +43,8 @@ a {
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
   position: sticky;
   top: 0;
   height: 100svh;
@@ -91,11 +93,13 @@ a {
 
 .nav-list {
   display: grid;
+  flex: 1;
   gap: 3px;
   padding-top: 14px;
 }
 
-.nav-link {
+.nav-link,
+.logout-button {
   display: flex;
   min-height: 44px;
   align-items: center;
@@ -106,7 +110,8 @@ a {
   text-decoration: none;
 }
 
-.nav-link:hover {
+.nav-link:hover,
+.logout-button:hover {
   background: #eef3ed;
   color: #1b2b21;
 }
@@ -115,6 +120,42 @@ a {
   background: #dfeee4;
   color: #174d31;
   font-weight: 650;
+}
+
+.sidebar-footer {
+  border-top: 1px solid #e6ebe3;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.logout-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.auth-shell {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  background: #f7f8f5;
+  padding: 18px;
+}
+
+.auth-card {
+  display: grid;
+  width: min(100%, 420px);
+  gap: 16px;
+  border: 1px solid #dfe6dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.auth-brand {
+  padding: 0 0 16px;
 }
 
 .main-content {
@@ -627,9 +668,20 @@ a {
     padding-bottom: 2px;
   }
 
-  .nav-link {
+  .sidebar-footer {
+    border-top: 0;
+    margin-top: 8px;
+    padding-top: 0;
+  }
+
+  .nav-link,
+  .logout-button {
     min-height: 42px;
     white-space: nowrap;
+  }
+
+  .logout-button {
+    justify-content: flex-start;
   }
 
   .main-content {
