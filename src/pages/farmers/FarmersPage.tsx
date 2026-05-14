@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
+import { Camera, Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
@@ -479,6 +479,42 @@ function CitizenQrScanner({
     }
   }
 
+  async function captureFrameAndScan() {
+    try {
+      onError(null);
+      setUploadScanStatus("Đang chụp khung hình để quét...");
+      const scanner = scannerRef.current;
+      if (!scanner) {
+        throw new Error("Scanner chưa sẵn sàng.");
+      }
+
+      const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        throw new Error("Chưa lấy được hình từ camera.");
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("Không thể tạo ảnh từ camera.");
+      }
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const file = await canvasToFile(canvas, "camera-frame.png");
+      const decodedText = await scanFileWithEnhancement(scanner, file, (message) =>
+        setUploadScanStatus(message),
+      );
+      setUploadScanStatus("Đã đọc QR từ ảnh chụp.");
+      onScan(decodedText);
+      await stopScanner(scanner, stoppedRef);
+    } catch (scanError) {
+      setUploadScanStatus("");
+      onError(`Không đọc được QR từ ảnh chụp: ${formatErrorMessage(scanError)}`);
+    }
+  }
+
   const currentCameraLabel =
     cameras.find((camera) => camera.id === selectedCameraId)?.label ||
     (selectedCameraId ? "Camera đã chọn" : "Camera sau");
@@ -502,6 +538,14 @@ function CitizenQrScanner({
           >
             <ImageUp size={17} aria-hidden="true" />
             Upload QR
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void captureFrameAndScan()}
+          >
+            <Camera size={17} aria-hidden="true" />
+            Chụp để quét
           </button>
           <button
             className="secondary-button"
