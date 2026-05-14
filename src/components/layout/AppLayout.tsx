@@ -24,6 +24,7 @@ const navigation = [
   { to: "/brokers", label: "Cò lúa", icon: Users },
   { to: "/purchase-batches", label: "Đợt mua", icon: PackageCheck },
   { to: "/purchase-items", label: "Phiếu mua", icon: ReceiptText },
+  { to: "/transporter-boats", label: "Ghe vận chuyển", icon: Truck },
   { to: "/transport-trips", label: "Chuyến ghe", icon: Truck },
   { to: "/transport-routes", label: "Tuyến vận chuyển", icon: Map },
   { to: "/factories", label: "Nhà máy", icon: Factory },

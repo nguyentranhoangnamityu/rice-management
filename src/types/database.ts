@@ -153,6 +153,10 @@ export type Database = {
           name: string;
           type: Database["public"]["Enums"]["factory_type"];
           phone: string | null;
+          tax_code: string | null;
+          bank_name: string | null;
+          bank_account_number: string | null;
+          bank_account_name: string | null;
           address: string | null;
           note: string | null;
           created_at: string;
@@ -163,6 +167,10 @@ export type Database = {
           name: string;
           type: Database["public"]["Enums"]["factory_type"];
           phone?: string | null;
+          tax_code?: string | null;
+          bank_name?: string | null;
+          bank_account_number?: string | null;
+          bank_account_name?: string | null;
           address?: string | null;
           note?: string | null;
           created_at?: string;
@@ -511,6 +519,10 @@ export type Database = {
           boat_name: string;
           owner_name: string | null;
           phone: string | null;
+          citizen_id: string | null;
+          bank_name: string | null;
+          bank_account_number: string | null;
+          bank_account_name: string | null;
           note: string | null;
           created_at: string;
           updated_at: string;
@@ -520,6 +532,10 @@ export type Database = {
           boat_name: string;
           owner_name?: string | null;
           phone?: string | null;
+          citizen_id?: string | null;
+          bank_name?: string | null;
+          bank_account_number?: string | null;
+          bank_account_name?: string | null;
           note?: string | null;
           created_at?: string;
           updated_at?: string;

@@ -4,59 +4,50 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { supabase } from "../../lib/supabase";
-import type { Enums, Tables } from "../../types/database";
+import type { Tables } from "../../types/database";
 
-type Factory = Tables<"factories">;
-type FactoryType = Enums<"factory_type">;
+type TransporterBoat = Tables<"transporter_boats">;
 
-const factoryTypeOptions: { value: FactoryType; label: string }[] = [
-  { value: "drying", label: "Sấy" },
-  { value: "milling", label: "Xay xát" },
-  { value: "drying_milling", label: "Sấy + xay xát" },
-];
-
-const factorySchema = z.object({
-  name: z.string().trim().min(1, "Vui lòng nhập tên nhà máy"),
-  type: z.enum(["drying", "milling", "drying_milling"]),
+const transporterBoatSchema = z.object({
+  boat_name: z.string().trim().min(1, "Vui lòng nhập tên ghe"),
+  owner_name: z.string().trim().optional(),
   phone: z.string().trim().optional(),
-  tax_code: z.string().trim().optional(),
+  citizen_id: z.string().trim().optional(),
   bank_name: z.string().trim().optional(),
   bank_account_number: z.string().trim().optional(),
   bank_account_name: z.string().trim().optional(),
-  address: z.string().trim().optional(),
   note: z.string().trim().optional(),
 });
 
-type FactoryFormValues = z.infer<typeof factorySchema>;
+type TransporterBoatFormValues = z.infer<typeof transporterBoatSchema>;
 
-const emptyValues: FactoryFormValues = {
-  name: "",
-  type: "drying",
+const emptyValues: TransporterBoatFormValues = {
+  boat_name: "",
+  owner_name: "",
   phone: "",
-  tax_code: "",
+  citizen_id: "",
   bank_name: "",
   bank_account_number: "",
   bank_account_name: "",
-  address: "",
   note: "",
 };
 
-export function FactoriesPage() {
-  const [items, setItems] = useState<Factory[]>([]);
+export function TransporterBoatsPage() {
+  const [items, setItems] = useState<TransporterBoat[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<Factory | null>(null);
+  const [editingItem, setEditingItem] = useState<TransporterBoat | null>(null);
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FactoryFormValues>({
-    resolver: zodResolver(factorySchema),
+  } = useForm<TransporterBoatFormValues>({
+    resolver: zodResolver(transporterBoatSchema),
     defaultValues: emptyValues,
   });
 
@@ -65,22 +56,22 @@ export function FactoriesPage() {
     if (!keyword) return items;
 
     return items.filter((item) =>
-      [item.name, item.phone, item.tax_code].some((value) =>
+      [item.boat_name, item.owner_name, item.phone, item.citizen_id].some((value) =>
         normalize(value).includes(keyword),
       ),
     );
   }, [items, search]);
 
-  const formTitle = editingItem ? "Sửa nhà máy" : "Thêm nhà máy";
+  const formTitle = editingItem ? "Sửa ghe vận chuyển" : "Thêm ghe vận chuyển";
 
-  async function loadFactories() {
+  async function loadTransporterBoats() {
     setLoading(true);
     setError(null);
 
     const { data, error: loadError } = await supabase
-      .from("factories")
+      .from("transporter_boats")
       .select("*")
-      .order("name", { ascending: true });
+      .order("boat_name", { ascending: true });
 
     if (loadError) {
       setError(loadError.message);
@@ -92,20 +83,19 @@ export function FactoriesPage() {
   }
 
   useEffect(() => {
-    void loadFactories();
+    void loadTransporterBoats();
   }, []);
 
-  function startEdit(item: Factory) {
+  function startEdit(item: TransporterBoat) {
     setEditingItem(item);
     reset({
-      name: item.name,
-      type: item.type,
+      boat_name: item.boat_name,
+      owner_name: item.owner_name ?? "",
       phone: item.phone ?? "",
-      tax_code: item.tax_code ?? "",
+      citizen_id: item.citizen_id ?? "",
       bank_name: item.bank_name ?? "",
       bank_account_number: item.bank_account_number ?? "",
       bank_account_name: item.bank_account_name ?? "",
-      address: item.address ?? "",
       note: item.note ?? "",
     });
   }
@@ -115,45 +105,44 @@ export function FactoriesPage() {
     reset(emptyValues);
   }
 
-  async function onSubmit(values: FactoryFormValues) {
+  async function onSubmit(values: TransporterBoatFormValues) {
     setSaving(true);
     setError(null);
 
     const payload = {
-      name: values.name,
-      type: values.type,
+      boat_name: values.boat_name,
+      owner_name: toNullable(values.owner_name),
       phone: toNullable(values.phone),
-      tax_code: toNullable(values.tax_code),
+      citizen_id: toNullable(values.citizen_id),
       bank_name: toNullable(values.bank_name),
       bank_account_number: toNullable(values.bank_account_number),
       bank_account_name: toNullable(values.bank_account_name),
-      address: toNullable(values.address),
       note: toNullable(values.note),
     };
 
     const result = editingItem
-      ? await supabase.from("factories").update(payload).eq("id", editingItem.id)
-      : await supabase.from("factories").insert(payload);
+      ? await supabase.from("transporter_boats").update(payload).eq("id", editingItem.id)
+      : await supabase.from("transporter_boats").insert(payload);
 
     if (result.error) {
       setError(result.error.message);
     } else {
       clearForm();
-      await loadFactories();
+      await loadTransporterBoats();
     }
 
     setSaving(false);
   }
 
-  async function deleteItem(item: Factory) {
-    const confirmed = window.confirm(`Xóa nhà máy "${item.name}"?`);
+  async function deleteItem(item: TransporterBoat) {
+    const confirmed = window.confirm(`Xóa ghe "${item.boat_name}"?`);
     if (!confirmed) return;
 
     setDeletingId(item.id);
     setError(null);
 
     const { error: deleteError } = await supabase
-      .from("factories")
+      .from("transporter_boats")
       .delete()
       .eq("id", item.id);
 
@@ -161,7 +150,7 @@ export function FactoriesPage() {
       setError(deleteError.message);
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadFactories();
+      await loadTransporterBoats();
     }
 
     setDeletingId(null);
@@ -171,8 +160,8 @@ export function FactoriesPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Nhà máy</h1>
-          <p>Quản lý nhà máy sấy, xay xát, mã số thuế và tài khoản ngân hàng.</p>
+          <h1>Ghe vận chuyển</h1>
+          <p>Quản lý ghe, chủ ghe, CCCD và tài khoản ngân hàng cho vận chuyển.</p>
         </div>
       </header>
 
@@ -188,42 +177,31 @@ export function FactoriesPage() {
           </div>
 
           <label className="field">
-            <span>Tên nhà máy</span>
-            <input {...register("name")} placeholder="VD: Chành Đức" />
-            {errors.name ? <small>{errors.name.message}</small> : null}
-          </label>
-
-          <label className="field">
-            <span>Loại dịch vụ</span>
-            <select {...register("type")}>
-              {factoryTypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <span>Tên ghe</span>
+            <input {...register("boat_name")} placeholder="VD: Ghe Ba Tấn" />
+            {errors.boat_name ? <small>{errors.boat_name.message}</small> : null}
           </label>
 
           <div className="field-grid">
             <label className="field">
-              <span>Số điện thoại</span>
-              <input {...register("phone")} inputMode="tel" placeholder="VD: 090..." />
+              <span>Chủ ghe</span>
+              <input {...register("owner_name")} placeholder="Tên chủ ghe" />
             </label>
             <label className="field">
-              <span>Mã số thuế</span>
-              <input {...register("tax_code")} placeholder="Mã số thuế" />
+              <span>Số điện thoại</span>
+              <input {...register("phone")} inputMode="tel" placeholder="VD: 090..." />
             </label>
           </div>
 
           <label className="field">
-            <span>Địa chỉ</span>
-            <input {...register("address")} placeholder="Địa chỉ nhà máy" />
+            <span>CCCD</span>
+            <input {...register("citizen_id")} inputMode="numeric" placeholder="Số CCCD" />
           </label>
 
           <div className="field-grid">
             <label className="field">
               <span>Ngân hàng</span>
-              <input {...register("bank_name")} placeholder="VD: Vietcombank" />
+              <input {...register("bank_name")} placeholder="VD: Agribank" />
             </label>
             <label className="field">
               <span>Số tài khoản</span>
@@ -243,7 +221,7 @@ export function FactoriesPage() {
 
           <button className="primary-button" type="submit" disabled={saving}>
             <Plus size={18} aria-hidden="true" />
-            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nhà máy"}
+            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm ghe"}
           </button>
         </form>
 
@@ -254,7 +232,7 @@ export function FactoriesPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm theo tên, điện thoại, mã số thuế"
+                placeholder="Tìm theo tên ghe, chủ ghe, điện thoại, CCCD"
               />
             </label>
           </div>
@@ -262,18 +240,18 @@ export function FactoriesPage() {
           {error ? <div className="alert error-alert">{error}</div> : null}
 
           {loading ? (
-            <div className="state-box">Đang tải nhà máy...</div>
+            <div className="state-box">Đang tải ghe vận chuyển...</div>
           ) : filteredItems.length === 0 ? (
-            <div className="state-box">Không có nhà máy phù hợp.</div>
+            <div className="state-box">Không có ghe phù hợp.</div>
           ) : (
             <div className="table-wrap">
               <table className="data-table wide-table">
                 <thead>
                   <tr>
-                    <th>Tên</th>
-                    <th>Loại</th>
+                    <th>Tên ghe</th>
+                    <th>Chủ ghe</th>
                     <th>Điện thoại</th>
-                    <th>Mã số thuế</th>
+                    <th>CCCD</th>
                     <th>Ngân hàng</th>
                     <th aria-label="Thao tác" />
                   </tr>
@@ -281,10 +259,10 @@ export function FactoriesPage() {
                 <tbody>
                   {filteredItems.map((item) => (
                     <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td>{formatFactoryType(item.type)}</td>
+                      <td>{item.boat_name}</td>
+                      <td>{item.owner_name || "-"}</td>
                       <td>{item.phone || "-"}</td>
-                      <td>{item.tax_code || "-"}</td>
+                      <td>{item.citizen_id || "-"}</td>
                       <td>
                         <div>{item.bank_name || "-"}</div>
                         <span className="muted-text">
@@ -327,8 +305,4 @@ function normalize(value: string | null | undefined) {
 function toNullable(value: string | undefined) {
   const trimmed = value?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function formatFactoryType(value: FactoryType) {
-  return factoryTypeOptions.find((option) => option.value === value)?.label ?? value;
 }

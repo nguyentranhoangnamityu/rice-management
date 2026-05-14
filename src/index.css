@@ -268,7 +268,8 @@ a {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   min-height: 44px;
   border: 1px solid #cbd6cc;
@@ -284,7 +285,8 @@ a {
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   border-color: #2f6f4e;
   box-shadow: 0 0 0 3px rgba(47, 111, 78, 0.13);
 }
