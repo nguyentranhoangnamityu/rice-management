@@ -82,6 +82,11 @@ export type Database = {
           id: string;
           name: string;
           phone: string | null;
+          citizen_id: string | null;
+          bank_name: string | null;
+          bank_account_number: string | null;
+          bank_account_name: string | null;
+          default_commission_per_kg: number | null;
           address: string | null;
           note: string | null;
           created_at: string;
@@ -91,6 +96,11 @@ export type Database = {
           id?: string;
           name: string;
           phone?: string | null;
+          citizen_id?: string | null;
+          bank_name?: string | null;
+          bank_account_number?: string | null;
+          bank_account_name?: string | null;
+          default_commission_per_kg?: number | null;
           address?: string | null;
           note?: string | null;
           created_at?: string;
