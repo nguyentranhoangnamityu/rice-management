@@ -22,6 +22,16 @@ const farmerSchema = z.object({
 
 type FarmerFormValues = z.infer<typeof farmerSchema>;
 
+type ParsedCitizenQr = {
+  citizen_id: string;
+  name: string;
+  address: string;
+  strategy: string;
+  confidence: "high" | "medium" | "low";
+  tokens: string[];
+  warnings: string[];
+};
+
 const emptyValues: FarmerFormValues = {
   name: "",
   phone: "",
@@ -44,6 +54,7 @@ export function FarmersPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scanRawText, setScanRawText] = useState("");
+  const [parsedCitizenQr, setParsedCitizenQr] = useState<ParsedCitizenQr | null>(null);
 
   const {
     register,
@@ -167,6 +178,7 @@ export function FarmersPage() {
     const parsed = parseCitizenQr(rawText);
 
     setScanRawText(rawText);
+    setParsedCitizenQr(parsed);
     if (parsed.citizen_id) {
       setValue("citizen_id", parsed.citizen_id, { shouldDirty: true, shouldValidate: true });
     }
@@ -219,6 +231,7 @@ export function FarmersPage() {
 
           {scannerOpen ? (
             <CitizenQrScanner
+              parsed={parsedCitizenQr}
               rawText={scanRawText}
               scannerError={scannerError}
               onClose={() => setScannerOpen(false)}
@@ -229,6 +242,7 @@ export function FarmersPage() {
             <div className="calculation-box">
               <span>QR CCCD đã quét gần nhất</span>
               <small>{scanRawText}</small>
+              {parsedCitizenQr ? <ParserDebug parsed={parsedCitizenQr} /> : null}
             </div>
           ) : null}
 
@@ -352,6 +366,7 @@ export function FarmersPage() {
 }
 
 type CitizenQrScannerProps = {
+  parsed: ParsedCitizenQr | null;
   rawText: string;
   scannerError: string | null;
   onClose: () => void;
@@ -360,6 +375,7 @@ type CitizenQrScannerProps = {
 };
 
 function CitizenQrScanner({
+  parsed,
   rawText,
   scannerError,
   onClose,
@@ -417,11 +433,29 @@ function CitizenQrScanner({
       )}
 
       {rawText ? (
-        <label className="field">
-          <span>Raw QR text</span>
-          <textarea value={rawText} readOnly rows={4} />
-        </label>
+        <>
+          <label className="field">
+            <span>Raw QR text</span>
+            <textarea value={rawText} readOnly rows={4} />
+          </label>
+          {parsed ? <ParserDebug parsed={parsed} /> : null}
+        </>
       ) : null}
+    </div>
+  );
+}
+
+function ParserDebug({ parsed }: { parsed: ParsedCitizenQr }) {
+  return (
+    <div className="calculation-box">
+      <span>Parser debug</span>
+      <small>Chiến lược: {parsed.strategy}</small>
+      <small>Độ tin cậy: {parsed.confidence}</small>
+      <small>CCCD: {parsed.citizen_id || "-"}</small>
+      <small>Họ tên: {parsed.name || "-"}</small>
+      <small>Địa chỉ: {parsed.address || "-"}</small>
+      {parsed.warnings.length > 0 ? <small>Cảnh báo: {parsed.warnings.join("; ")}</small> : null}
+      <small>Tokens: {parsed.tokens.length > 0 ? parsed.tokens.join(" | ") : "-"}</small>
     </div>
   );
 }
@@ -440,31 +474,122 @@ async function stopScanner(scanner: Html5Qrcode, stoppedRef: React.MutableRefObj
   }
 }
 
-function parseCitizenQr(rawText: string): Partial<Pick<FarmerFormValues, "citizen_id" | "name" | "address">> {
+function parseCitizenQr(rawText: string): ParsedCitizenQr {
   const trimmed = rawText.trim();
+  const warnings: string[] = [];
 
   try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const parsedJson = JSON.parse(trimmed) as Record<string, unknown>;
+    const jsonValues = flattenJsonValues(parsedJson);
+    const citizenId =
+      findCitizenId(jsonValues) ||
+      normalizeCitizenId(readString(parsedJson, ["citizen_id", "id", "cccd", "so_cccd"]));
+    const name = cleanName(readString(parsedJson, ["name", "full_name", "ho_ten"]));
+    const address = readString(parsedJson, ["address", "dia_chi", "permanent_address"]);
+
+    if (!citizenId) warnings.push("Không tìm thấy CCCD 12 số trong JSON.");
+    if (!name) warnings.push("Không tìm thấy họ tên rõ ràng trong JSON.");
+    if (!address) warnings.push("Không tìm thấy địa chỉ trong JSON.");
+
     return {
-      citizen_id: readString(parsed, ["citizen_id", "id", "cccd", "so_cccd"]),
-      name: readString(parsed, ["name", "full_name", "ho_ten"]),
-      address: readString(parsed, ["address", "dia_chi", "permanent_address"]),
+      citizen_id: citizenId,
+      name,
+      address,
+      strategy: "json",
+      confidence: citizenId && name ? "high" : "medium",
+      tokens: jsonValues,
+      warnings,
     };
   } catch {
     // Vietnamese CCCD QR is commonly pipe-separated, not JSON.
   }
 
-  const parts = trimmed
-    .split("|")
+  const tokens = trimmed
+    .split(/[|\n\r;]+/)
     .map((part) => part.trim())
     .filter(Boolean);
-  const citizenId = parts.find((part) => /^\d{9,12}$/.test(part)) ?? "";
+  const citizenId = findCitizenId(tokens);
+  const name = findLikelyName(tokens, citizenId);
+  const address = findLikelyAddress(tokens);
+
+  if (!citizenId) warnings.push("Không tìm thấy CCCD 12 số.");
+  if (!name) warnings.push("Không nhận diện chắc chắn họ tên.");
+  if (!address) warnings.push("Không nhận diện được địa chỉ.");
 
   return {
     citizen_id: citizenId,
-    name: parts[2] || parts[1] || "",
-    address: parts[5] || parts[4] || "",
+    name,
+    address,
+    strategy: "delimited-heuristic",
+    confidence: citizenId && name && address ? "high" : citizenId && (name || address) ? "medium" : "low",
+    tokens,
+    warnings,
   };
+}
+
+function findCitizenId(values: string[]) {
+  for (const value of values) {
+    const match = value.match(/\b\d{12}\b/);
+    if (match) return match[0];
+  }
+
+  return "";
+}
+
+function normalizeCitizenId(value: string) {
+  return value.match(/^\d{12}$/) ? value : "";
+}
+
+function findLikelyName(tokens: string[], citizenId: string) {
+  const candidates = tokens
+    .filter((token) => token !== citizenId)
+    .filter((token) => !/\d/.test(token))
+    .filter((token) => token.split(/\s+/).length >= 2)
+    .filter((token) => !looksLikeAddress(token))
+    .map(cleanName)
+    .filter(Boolean);
+
+  return candidates.find((candidate) => candidate === candidate.toUpperCase()) ?? candidates[0] ?? "";
+}
+
+function findLikelyAddress(tokens: string[]) {
+  const addressCandidates = tokens.filter(looksLikeAddress);
+  if (addressCandidates.length > 0) {
+    return addressCandidates.sort((a, b) => b.length - a.length)[0];
+  }
+
+  return tokens
+    .filter((token) => token.length > 20)
+    .filter((token) => !/^\d+$/.test(token))
+    .sort((a, b) => b.length - a.length)[0] ?? "";
+}
+
+function looksLikeAddress(value: string) {
+  const normalized = value.toLowerCase();
+  return [
+    "ấp",
+    "xã",
+    "phường",
+    "huyện",
+    "quận",
+    "tỉnh",
+    "thành phố",
+    "đường",
+    "thôn",
+    "khóm",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function cleanName(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function flattenJsonValues(source: unknown): string[] {
+  if (source === null || source === undefined) return [];
+  if (typeof source === "string" || typeof source === "number") return [String(source).trim()].filter(Boolean);
+  if (Array.isArray(source)) return source.flatMap(flattenJsonValues);
+  if (typeof source === "object") return Object.values(source).flatMap(flattenJsonValues);
+  return [];
 }
 
 function readString(source: Record<string, unknown>, keys: string[]) {
