@@ -386,6 +386,7 @@ function CitizenQrScanner({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const stoppedRef = useRef(false);
+  const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [uploadScanStatus, setUploadScanStatus] = useState("");
@@ -409,22 +410,25 @@ function CitizenQrScanner({
     stoppedRef.current = false;
     const cameraConfig = selectedCameraId
       ? selectedCameraId
-      : { facingMode: { exact: "environment" } };
+      : ({ facingMode: { ideal: "environment" } } as MediaTrackConstraints);
 
     scanner
       .start(
         cameraConfig,
         {
-          fps: 10,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
-            const size = Math.max(180, Math.min(edge, 420));
-            return { width: size, height: size };
-          },
+          fps: 20,
+          disableFlip: false,
+          videoConstraints: buildVideoConstraints(selectedCameraId),
         },
         (decodedText) => {
+          const now = Date.now();
+          const isDuplicate =
+            decodedText === lastScanRef.current.text && now - lastScanRef.current.at < 1200;
+          if (isDuplicate) return;
+
+          lastScanRef.current = { text: decodedText, at: now };
+          setUploadScanStatus("Đã nhận dữ liệu QR, đang quét realtime...");
           onScan(decodedText);
-          void stopScanner(scanner, stoppedRef);
         },
         () => {
           // Ignore frame-level decode misses; they happen continuously while scanning.
@@ -569,7 +573,8 @@ function CitizenQrScanner({
         </div>
       ) : (
         <p className="section-hint">
-          Đưa mã QR vào giữa khung, giữ yên 1-2 giây. Đang dùng: {currentCameraLabel}.
+          Đưa mã QR vào vùng camera, hệ thống quét realtime liên tục ngay cả khi tay rung nhẹ hoặc thay
+          đổi khoảng cách. Đang dùng: {currentCameraLabel}.
         </p>
       )}
 
@@ -594,6 +599,24 @@ function getQrCodeFormats() {
   }
 
   return undefined;
+}
+
+function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConstraints {
+  if (selectedCameraId) {
+    return {
+      deviceId: { exact: selectedCameraId },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 30, max: 60 },
+    };
+  }
+
+  return {
+    facingMode: { ideal: "environment" },
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30, max: 60 },
+  };
 }
 
 async function scanFileWithEnhancement(
