@@ -8,6 +8,7 @@ import { ExportsPage } from "../pages/exports/ExportsPage";
 import { FactoriesPage } from "../pages/factories/FactoriesPage";
 import { FarmersPage } from "../pages/farmers/FarmersPage";
 import { ProcessingRecordsPage } from "../pages/processing-records/ProcessingRecordsPage";
+import { PurchaseBatchDetailPage } from "../pages/purchase-batches/PurchaseBatchDetailPage";
 import { PurchaseBatchesPage } from "../pages/purchase-batches/PurchaseBatchesPage";
 import { PurchaseItemsPage } from "../pages/purchase-items/PurchaseItemsPage";
 import { RiceTypesPage } from "../pages/rice-types/RiceTypesPage";
@@ -27,6 +28,7 @@ export function AppRouter() {
         <Route path="farmers" element={<FarmersPage />} />
         <Route path="brokers" element={<BrokersPage />} />
         <Route path="purchase-batches" element={<PurchaseBatchesPage />} />
+        <Route path="purchase-batches/:batchId" element={<PurchaseBatchDetailPage />} />
         <Route path="purchase-items" element={<PurchaseItemsPage />} />
         <Route path="transporter-boats" element={<TransporterBoatsPage />} />
         <Route path="transport-trips" element={<TransportTripsPage />} />

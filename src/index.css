@@ -398,6 +398,10 @@ a {
   min-width: 880px;
 }
 
+.extra-wide-table {
+  min-width: 1120px;
+}
+
 .data-table th,
 .data-table td {
   border-bottom: 1px solid #e7ece5;
@@ -432,6 +436,60 @@ a {
   margin-top: 2px;
   color: #6a766e;
   font-size: 13px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: #2f6f4e;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #dfe6dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.metric-card span {
+  color: #65736a;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.metric-card strong {
+  color: #17211b;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.calculation-box {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dfe6dc;
+  border-radius: 8px;
+  background: #f8faf7;
+  padding: 12px;
+  color: #274331;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .stops-editor {
@@ -526,6 +584,10 @@ a {
   }
 
   .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
     grid-template-columns: 1fr;
   }
 
