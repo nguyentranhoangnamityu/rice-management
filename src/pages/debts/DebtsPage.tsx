@@ -7,8 +7,7 @@ import type { Enums, Tables } from "../../types/database";
 type Broker = Tables<"brokers">;
 type Factory = Tables<"factories">;
 type ProcessingRecord = Tables<"processing_records">;
-type PurchaseBatch = Tables<"purchase_batches">;
-type PurchaseItem = Tables<"purchase_items">;
+type PurchaseSlip = Tables<"purchase_slips">;
 type Season = Tables<"seasons">;
 type TransporterBoat = Tables<"transporter_boats">;
 type TransportTrip = Tables<"transport_trips">;
@@ -45,8 +44,7 @@ const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
 
 export function DebtsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
-  const [purchaseBatches, setPurchaseBatches] = useState<PurchaseBatch[]>([]);
-  const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>([]);
+  const [purchaseSlips, setPurchaseSlips] = useState<PurchaseSlip[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
   const [boats, setBoats] = useState<TransporterBoat[]>([]);
@@ -63,8 +61,7 @@ export function DebtsPage() {
 
     const [
       seasonsResult,
-      purchaseBatchesResult,
-      purchaseItemsResult,
+      purchaseSlipsResult,
       brokersResult,
       transportTripsResult,
       boatsResult,
@@ -72,8 +69,7 @@ export function DebtsPage() {
       factoriesResult,
     ] = await Promise.all([
       supabase.from("seasons").select("*").order("from_date", { ascending: false }),
-      supabase.from("purchase_batches").select("*"),
-      supabase.from("purchase_items").select("*"),
+      supabase.from("purchase_slips").select("*"),
       supabase.from("brokers").select("*").order("name", { ascending: true }),
       supabase.from("transport_trips").select("*"),
       supabase.from("transporter_boats").select("*").order("boat_name", { ascending: true }),
@@ -83,8 +79,7 @@ export function DebtsPage() {
 
     const firstError =
       seasonsResult.error ??
-      purchaseBatchesResult.error ??
-      purchaseItemsResult.error ??
+      purchaseSlipsResult.error ??
       brokersResult.error ??
       transportTripsResult.error ??
       boatsResult.error ??
@@ -98,8 +93,7 @@ export function DebtsPage() {
     }
 
     setSeasons(seasonsResult.data ?? []);
-    setPurchaseBatches(purchaseBatchesResult.data ?? []);
-    setPurchaseItems(purchaseItemsResult.data ?? []);
+    setPurchaseSlips(purchaseSlipsResult.data ?? []);
     setBrokers(brokersResult.data ?? []);
     setTransportTrips(transportTripsResult.data ?? []);
     setBoats(boatsResult.data ?? []);
@@ -113,16 +107,13 @@ export function DebtsPage() {
   }, []);
 
   const summaries = useMemo(() => {
-    const batchMap = new Map(purchaseBatches.map((batch) => [batch.id, batch]));
     const brokerMap = new Map(brokers.map((broker) => [broker.id, broker]));
     const boatMap = new Map(boats.map((boat) => [boat.id, boat]));
     const factoryMap = new Map(factories.map((factory) => [factory.id, factory]));
 
-    const filteredPurchaseItems = purchaseItems.filter((item) => {
-      const batch = batchMap.get(item.purchase_batch_id);
-      const seasonMatch = !seasonFilter || batch?.season_id === seasonFilter;
-      const paymentMatch =
-        !paymentStatusFilter || item.farmer_payment_status === paymentStatusFilter;
+    const filteredPurchaseSlips = purchaseSlips.filter((item) => {
+      const seasonMatch = !seasonFilter || item.season_id === seasonFilter;
+      const paymentMatch = !paymentStatusFilter || item.payment_status === paymentStatusFilter;
       return seasonMatch && paymentMatch;
     });
 
@@ -139,7 +130,7 @@ export function DebtsPage() {
     });
 
     const brokerDebtMap = new Map<string, BrokerDebtRow>();
-    for (const item of filteredPurchaseItems) {
+    for (const item of filteredPurchaseSlips) {
       const broker = brokerMap.get(item.broker_id);
       const current = brokerDebtMap.get(item.broker_id) ?? {
         brokerId: item.broker_id,
@@ -210,8 +201,7 @@ export function DebtsPage() {
     factories,
     paymentStatusFilter,
     processingRecords,
-    purchaseBatches,
-    purchaseItems,
+    purchaseSlips,
     seasonFilter,
     transportTrips,
   ]);
