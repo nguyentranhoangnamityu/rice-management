@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, FileText, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -288,6 +289,42 @@ export function PurchaseSlipsPage() {
     setDeletingId(null);
   }
 
+  function generateAuthorizationLetter(item: SlipRow) {
+    if (!item.authorizedReceiverBroker) return;
+
+    exportPdf({
+      title: "Giay uy quyen nhan tien mua lua",
+      fileName: `authorization-letter-${item.purchase_date}-${item.id.slice(0, 8)}.pdf`,
+      details: [
+        `Ngay mua: ${formatDate(item.purchase_date)}`,
+        "Noi dung: Nong dan uy quyen cho nguoi nhan tien theo phieu mua lua.",
+      ],
+      tables: [
+        {
+          title: "Thong tin uy quyen",
+          headers: ["Noi dung", "Gia tri"],
+          rows: [
+            ["Nong dan", item.farmer?.name ?? "-"],
+            ["CCCD nong dan", item.farmer?.citizen_id ?? "-"],
+            ["Dia chi nong dan", item.farmer?.address ?? "-"],
+            ["Nguoi nhan uy quyen", item.authorizedReceiverBroker.name],
+            ["CCCD nguoi nhan", item.authorizedReceiverBroker.citizen_id ?? "-"],
+            ["Ngay mua", formatDate(item.purchase_date)],
+            ["Loai lua", item.riceType?.name ?? "-"],
+            ["Khoi luong", `${formatNumber(item.weight_kg)} kg`],
+            ["Thanh tien", formatMoney(item.total_amount)],
+            ["Ghi chu", item.note ?? "-"],
+          ],
+        },
+        {
+          title: "Chu ky",
+          headers: ["Ben uy quyen", "Nguoi nhan uy quyen", "Nguoi lap phieu"],
+          rows: [["Ky va ghi ro ho ten", "Ky va ghi ro ho ten", "Ky va ghi ro ho ten"]],
+        },
+      ],
+    });
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -517,6 +554,20 @@ export function PurchaseSlipsPage() {
                       <td>{formatPaymentStatus(item.payment_status)}</td>
                       <td>
                         <div className="row-actions">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => generateAuthorizationLetter(item)}
+                            disabled={!item.authorizedReceiverBroker}
+                            title={
+                              item.authorizedReceiverBroker
+                                ? "Tạo giấy ủy quyền"
+                                : "Chọn cò nhận ủy quyền trước"
+                            }
+                          >
+                            <FileText size={17} aria-hidden="true" />
+                            Tạo giấy ủy quyền
+                          </button>
                           <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
                             <Edit2 size={17} aria-hidden="true" />
                           </button>
