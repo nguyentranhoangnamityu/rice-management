@@ -594,6 +594,20 @@ a {
   font-weight: 700;
 }
 
+.qr-scanner {
+  overflow: hidden;
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid #dfe6dc;
+  border-radius: 8px;
+  background: #f8faf7;
+}
+
+.qr-scanner video {
+  width: 100% !important;
+  border-radius: 8px;
+}
+
 .stops-editor {
   display: grid;
   gap: 12px;

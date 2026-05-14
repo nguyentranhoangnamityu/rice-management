@@ -1,7 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Edit2, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Html5Qrcode } from "html5-qrcode";
 import { z } from "zod";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
@@ -40,11 +41,15 @@ export function FarmersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Farmer | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [scanRawText, setScanRawText] = useState("");
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FarmerFormValues>({
     resolver: zodResolver(farmerSchema),
@@ -158,6 +163,27 @@ export function FarmersPage() {
     setDeletingId(null);
   }
 
+  const applyScannedText = useCallback((rawText: string) => {
+    const parsed = parseCitizenQr(rawText);
+
+    setScanRawText(rawText);
+    if (parsed.citizen_id) {
+      setValue("citizen_id", parsed.citizen_id, { shouldDirty: true, shouldValidate: true });
+    }
+    if (parsed.name) {
+      setValue("name", parsed.name, { shouldDirty: true, shouldValidate: true });
+    }
+    if (parsed.address) {
+      setValue("address", parsed.address, { shouldDirty: true, shouldValidate: true });
+    }
+
+    if (!parsed.citizen_id && !parsed.name && !parsed.address) {
+      setScannerError("Đã quét QR nhưng chưa nhận diện được thông tin CCCD. Vui lòng nhập tay.");
+    } else {
+      setScannerError(null);
+    }
+  }, [setValue]);
+
   return (
     <section className="page">
       <header className="page-header">
@@ -171,12 +197,40 @@ export function FarmersPage() {
         <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
+            <div className="row-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setScannerOpen((current) => !current);
+                  setScannerError(null);
+                }}
+              >
+                <ScanLine size={17} aria-hidden="true" />
+                Quét CCCD
               </button>
-            ) : null}
+              {editingItem ? (
+                <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
+                  <X size={18} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
           </div>
+
+          {scannerOpen ? (
+            <CitizenQrScanner
+              rawText={scanRawText}
+              scannerError={scannerError}
+              onClose={() => setScannerOpen(false)}
+              onError={setScannerError}
+              onScan={applyScannedText}
+            />
+          ) : scanRawText ? (
+            <div className="calculation-box">
+              <span>QR CCCD đã quét gần nhất</span>
+              <small>{scanRawText}</small>
+            </div>
+          ) : null}
 
           <label className="field">
             <span>Tên nông dân</span>
@@ -295,6 +349,141 @@ export function FarmersPage() {
       </div>
     </section>
   );
+}
+
+type CitizenQrScannerProps = {
+  rawText: string;
+  scannerError: string | null;
+  onClose: () => void;
+  onError: (message: string | null) => void;
+  onScan: (rawText: string) => void;
+};
+
+function CitizenQrScanner({
+  rawText,
+  scannerError,
+  onClose,
+  onError,
+  onScan,
+}: CitizenQrScannerProps) {
+  const scannerElementId = useId().replace(/:/g, "-");
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const stoppedRef = useRef(false);
+
+  useEffect(() => {
+    const scanner = new Html5Qrcode(scannerElementId);
+    scannerRef.current = scanner;
+    stoppedRef.current = false;
+
+    scanner
+      .start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        (decodedText) => {
+          onScan(decodedText);
+          void stopScanner(scanner, stoppedRef);
+        },
+        () => {
+          // Ignore frame-level decode misses; they happen continuously while scanning.
+        },
+      )
+      .catch((scanError: unknown) => {
+        onError(formatScannerError(scanError));
+      });
+
+    return () => {
+      void stopScanner(scanner, stoppedRef);
+      scannerRef.current = null;
+    };
+  }, [onError, onScan, scannerElementId]);
+
+  return (
+    <div className="form-card">
+      <div className="card-title-row">
+        <h2>Quét CCCD</h2>
+        <button className="icon-button" type="button" onClick={onClose} aria-label="Đóng scanner">
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div id={scannerElementId} className="qr-scanner" />
+
+      {scannerError ? (
+        <div className="alert error-alert">
+          {scannerError} Bạn vẫn có thể nhập thông tin CCCD thủ công.
+        </div>
+      ) : (
+        <p className="section-hint">Cho phép camera, đưa mã QR trên CCCD vào khung quét.</p>
+      )}
+
+      {rawText ? (
+        <label className="field">
+          <span>Raw QR text</span>
+          <textarea value={rawText} readOnly rows={4} />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+async function stopScanner(scanner: Html5Qrcode, stoppedRef: React.MutableRefObject<boolean>) {
+  if (stoppedRef.current) return;
+  stoppedRef.current = true;
+
+  try {
+    if (scanner.isScanning) {
+      await scanner.stop();
+    }
+    await scanner.clear();
+  } catch {
+    // Camera may already be stopped by the browser or permission flow.
+  }
+}
+
+function parseCitizenQr(rawText: string): Partial<Pick<FarmerFormValues, "citizen_id" | "name" | "address">> {
+  const trimmed = rawText.trim();
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    return {
+      citizen_id: readString(parsed, ["citizen_id", "id", "cccd", "so_cccd"]),
+      name: readString(parsed, ["name", "full_name", "ho_ten"]),
+      address: readString(parsed, ["address", "dia_chi", "permanent_address"]),
+    };
+  } catch {
+    // Vietnamese CCCD QR is commonly pipe-separated, not JSON.
+  }
+
+  const parts = trimmed
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const citizenId = parts.find((part) => /^\d{9,12}$/.test(part)) ?? "";
+
+  return {
+    citizen_id: citizenId,
+    name: parts[2] || parts[1] || "",
+    address: parts[5] || parts[4] || "",
+  };
+}
+
+function readString(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+
+  return "";
+}
+
+function formatScannerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.toLowerCase().includes("permission")) {
+    return "Không có quyền truy cập camera. Vui lòng cấp quyền camera hoặc nhập thủ công.";
+  }
+
+  return `Không thể mở camera: ${message}`;
 }
 
 function normalize(value: string | null | undefined) {

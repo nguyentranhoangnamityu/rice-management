@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { AppLayout } from "../components/layout/AppLayout";
+import { AuthorizationLettersPage } from "../pages/authorization-letters/AuthorizationLettersPage";
 import { AttachmentsPage } from "../pages/attachments/AttachmentsPage";
 import { BrokersPage } from "../pages/brokers/BrokersPage";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
@@ -33,6 +34,7 @@ export function AppRouter() {
           <Route path="farmers" element={<FarmersPage />} />
           <Route path="brokers" element={<BrokersPage />} />
           <Route path="purchase-slips" element={<PurchaseSlipsPage />} />
+          <Route path="authorization-letters" element={<AuthorizationLettersPage />} />
           <Route path="purchase-batches" element={<PurchaseBatchesPage />} />
           <Route path="purchase-batches/:batchId" element={<PurchaseBatchDetailPage />} />
           <Route path="purchase-items" element={<PurchaseItemsPage />} />

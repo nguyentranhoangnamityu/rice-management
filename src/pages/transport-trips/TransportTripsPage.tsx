@@ -39,32 +39,32 @@ type PurchaseSlipAssignment = PurchaseSlip & {
 };
 
 const priceBasisOptions: { value: TransportPriceBasis; label: string }[] = [
-  { value: "loaded_weight", label: "Theo kg lÃªn ghe" },
-  { value: "unloaded_weight", label: "Theo kg xuá»‘ng ghe" },
-  { value: "fixed", label: "GiÃ¡ cá»‘ Ä‘á»‹nh" },
+  { value: "loaded_weight", label: "Theo kg lên ghe" },
+  { value: "unloaded_weight", label: "Theo kg xuống ghe" },
+  { value: "fixed", label: "Giá cố định" },
 ];
 
 const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
-  { value: "unpaid", label: "ChÆ°a tráº£" },
-  { value: "partial", label: "Tráº£ má»™t pháº§n" },
-  { value: "paid", label: "ÄÃ£ tráº£" },
+  { value: "unpaid", label: "Chưa trả" },
+  { value: "partial", label: "Trả một phần" },
+  { value: "paid", label: "Đã trả" },
 ];
 
 const tripSchema = z.object({
-  code: z.string().trim().min(1, "Vui lÃ²ng nháº­p mÃ£ chuyáº¿n"),
-  transporter_boat_id: z.string().min(1, "Vui lÃ²ng chá»n ghe"),
-  route_id: z.string().min(1, "Vui lÃ²ng chá»n tuyáº¿n"),
+  code: z.string().trim().min(1, "Vui lòng nhập mã chuyến"),
+  transporter_boat_id: z.string().min(1, "Vui lòng chọn ghe"),
+  route_id: z.string().min(1, "Vui lòng chọn tuyến"),
   factory_id: z.string().optional(),
-  season_id: z.string().min(1, "Vui lÃ²ng chá»n mÃ¹a vá»¥"),
-  rice_type_id: z.string().min(1, "Vui lÃ²ng chá»n loáº¡i lÃºa"),
-  trip_date: z.string().min(1, "Vui lÃ²ng chá»n ngÃ y chuyáº¿n"),
-  loaded_weight_kg: z.number().min(0, "Kg lÃªn ghe khÃ´ng Ä‘Æ°á»£c Ã¢m"),
-  unloaded_weight_kg: z.number().min(0, "Kg xuá»‘ng ghe khÃ´ng Ä‘Æ°á»£c Ã¢m"),
+  season_id: z.string().min(1, "Vui lòng chọn mùa vụ"),
+  rice_type_id: z.string().min(1, "Vui lòng chọn loại lúa"),
+  trip_date: z.string().min(1, "Vui lòng chọn ngày chuyến"),
+  loaded_weight_kg: z.number().min(0, "Kg lên ghe không được âm"),
+  unloaded_weight_kg: z.number().min(0, "Kg xuống ghe không được âm"),
   transport_price_basis: z.enum(["loaded_weight", "unloaded_weight", "fixed"]),
-  transport_price: z.number().min(0, "GiÃ¡ váº­n chuyá»ƒn khÃ´ng Ä‘Æ°á»£c Ã¢m"),
-  fuel_fee: z.number().min(0, "Tiá»n dáº§u khÃ´ng Ä‘Æ°á»£c Ã¢m"),
-  labor_fee: z.number().min(0, "Tiá»n cÃ´ng khÃ´ng Ä‘Æ°á»£c Ã¢m"),
-  weighing_fee: z.number().min(0, "Tiá»n cÃ¢n khÃ´ng Ä‘Æ°á»£c Ã¢m"),
+  transport_price: z.number().min(0, "Giá vận chuyển không được âm"),
+  fuel_fee: z.number().min(0, "Tiền dầu không được âm"),
+  labor_fee: z.number().min(0, "Tiền công không được âm"),
+  weighing_fee: z.number().min(0, "Tiền cân không được âm"),
   payment_status: z.enum(["unpaid", "partial", "paid"]),
   note: z.string().trim().optional(),
 });
@@ -151,7 +151,7 @@ export function TransportTripsPage() {
     );
   }, [items, search]);
 
-  const formTitle = editingItem ? "Sá»­a chuyáº¿n ghe" : "ThÃªm chuyáº¿n ghe";
+  const formTitle = editingItem ? "Sửa chuyến ghe" : "Thêm chuyến ghe";
   const assignablePurchaseSlips = useMemo(() => {
     if (!editingItem) return [];
 
@@ -364,7 +364,7 @@ export function TransportTripsPage() {
   }
 
   async function deleteItem(item: TripRow) {
-    const confirmed = window.confirm(`XÃ³a chuyáº¿n ghe "${item.code}"?`);
+    const confirmed = window.confirm(`Xóa chuyến ghe "${item.code}"?`);
     if (!confirmed) return;
 
     setDeletingId(item.id);
@@ -430,8 +430,8 @@ export function TransportTripsPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Chuyáº¿n ghe</h1>
-          <p>Theo dÃµi váº­n chuyá»ƒn, hao há»¥t, chi phÃ­ vÃ  cÃ´ng ná»£ ghe theo mÃ¹a vá»¥.</p>
+          <h1>Chuyến ghe</h1>
+          <p>Theo dõi vận chuyển, hao hụt, chi phí và công nợ ghe theo mùa vụ.</p>
         </div>
       </header>
 
@@ -440,14 +440,14 @@ export function TransportTripsPage() {
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Há»§y sá»­a">
+              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
                 <X size={18} aria-hidden="true" />
               </button>
             ) : null}
           </div>
 
           <label className="field">
-            <span>MÃ£ chuyáº¿n</span>
+            <span>Mã chuyến</span>
             <input {...register("code")} placeholder="VD: CG-2026-001" />
             {errors.code ? <small>{errors.code.message}</small> : null}
           </label>
@@ -456,7 +456,7 @@ export function TransportTripsPage() {
             <label className="field">
               <span>Ghe</span>
               <select {...register("transporter_boat_id")}>
-                <option value="">Chá»n ghe</option>
+                <option value="">Chọn ghe</option>
                 {boats.map((boat) => (
                   <option key={boat.id} value={boat.id}>
                     {boat.boat_name}
@@ -466,16 +466,16 @@ export function TransportTripsPage() {
               {errors.transporter_boat_id ? <small>{errors.transporter_boat_id.message}</small> : null}
             </label>
             <label className="field">
-              <span>NgÃ y chuyáº¿n</span>
+              <span>Ngày chuyến</span>
               <input type="date" {...register("trip_date")} />
               {errors.trip_date ? <small>{errors.trip_date.message}</small> : null}
             </label>
           </div>
 
           <label className="field">
-            <span>Tuyáº¿n</span>
+            <span>Tuyến</span>
             <select {...register("route_id")}>
-              <option value="">Chá»n tuyáº¿n</option>
+              <option value="">Chọn tuyến</option>
               {routes.map((route) => (
                 <option key={route.id} value={route.id}>
                   {route.name} - {formatRoutePath(route.stops)}
@@ -487,9 +487,9 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>NhÃ  mÃ¡y</span>
+              <span>Nhà máy</span>
               <select {...register("factory_id")}>
-                <option value="">KhÃ´ng chá»n</option>
+                <option value="">Không chọn</option>
                 {factories.map((factory) => (
                   <option key={factory.id} value={factory.id}>
                     {factory.name}
@@ -498,9 +498,9 @@ export function TransportTripsPage() {
               </select>
             </label>
             <label className="field">
-              <span>MÃ¹a vá»¥</span>
+              <span>Mùa vụ</span>
               <select {...register("season_id")}>
-                <option value="">Chá»n mÃ¹a vá»¥</option>
+                <option value="">Chọn mùa vụ</option>
                 {seasons.map((season) => (
                   <option key={season.id} value={season.id}>
                     {season.name}
@@ -512,9 +512,9 @@ export function TransportTripsPage() {
           </div>
 
           <label className="field">
-            <span>Loáº¡i lÃºa</span>
+            <span>Loại lúa</span>
             <select {...register("rice_type_id")}>
-              <option value="">Chá»n loáº¡i lÃºa</option>
+              <option value="">Chọn loại lúa</option>
               {riceTypes.map((riceType) => (
                 <option key={riceType.id} value={riceType.id}>
                   {riceType.name}
@@ -526,7 +526,7 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>Kg lÃªn ghe</span>
+              <span>Kg lên ghe</span>
               <input
                 type="number"
                 min="0"
@@ -536,7 +536,7 @@ export function TransportTripsPage() {
               {errors.loaded_weight_kg ? <small>{errors.loaded_weight_kg.message}</small> : null}
             </label>
             <label className="field">
-              <span>Kg xuá»‘ng ghe</span>
+              <span>Kg xuống ghe</span>
               <input
                 type="number"
                 min="0"
@@ -549,7 +549,7 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>CÃ¡ch tÃ­nh giÃ¡</span>
+              <span>Cách tính giá</span>
               <select {...register("transport_price_basis")}>
                 {priceBasisOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -559,7 +559,7 @@ export function TransportTripsPage() {
               </select>
             </label>
             <label className="field">
-              <span>GiÃ¡ váº­n chuyá»ƒn</span>
+              <span>Giá vận chuyển</span>
               <input
                 type="number"
                 min="0"
@@ -572,12 +572,12 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>Tiá»n dáº§u</span>
+              <span>Tiền dầu</span>
               <input type="number" min="0" step="1" {...register("fuel_fee", { valueAsNumber: true })} />
               {errors.fuel_fee ? <small>{errors.fuel_fee.message}</small> : null}
             </label>
             <label className="field">
-              <span>Tiá»n cÃ´ng</span>
+              <span>Tiền công</span>
               <input type="number" min="0" step="1" {...register("labor_fee", { valueAsNumber: true })} />
               {errors.labor_fee ? <small>{errors.labor_fee.message}</small> : null}
             </label>
@@ -585,12 +585,12 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>Tiá»n cÃ¢n</span>
+              <span>Tiền cân</span>
               <input type="number" min="0" step="1" {...register("weighing_fee", { valueAsNumber: true })} />
               {errors.weighing_fee ? <small>{errors.weighing_fee.message}</small> : null}
             </label>
             <label className="field">
-              <span>Tráº¡ng thÃ¡i thanh toÃ¡n</span>
+              <span>Trạng thái thanh toán</span>
               <select {...register("payment_status")}>
                 {paymentStatusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -602,19 +602,19 @@ export function TransportTripsPage() {
           </div>
 
           <div className="calculation-box">
-            <span>Hao há»¥t: {formatNumber(calculated.lossWeight)} kg ({formatNumber(calculated.lossPercent)}%)</span>
-            <span>Tiá»n váº­n chuyá»ƒn: {formatMoney(calculated.transportCost)}</span>
-            <span>Tá»•ng chi phÃ­: {formatMoney(calculated.totalCost)}</span>
+            <span>Hao hụt: {formatNumber(calculated.lossWeight)} kg ({formatNumber(calculated.lossPercent)}%)</span>
+            <span>Tiền vận chuyển: {formatMoney(calculated.transportCost)}</span>
+            <span>Tổng chi phí: {formatMoney(calculated.totalCost)}</span>
           </div>
 
           <label className="field">
-            <span>Ghi chÃº</span>
-            <textarea {...register("note")} rows={3} placeholder="ThÃ´ng tin thÃªm náº¿u cáº§n" />
+            <span>Ghi chú</span>
+            <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
           </label>
 
           <button className="primary-button" type="submit" disabled={saving}>
             <Plus size={18} aria-hidden="true" />
-            {saving ? "Äang lÆ°u..." : editingItem ? "LÆ°u thay Ä‘á»•i" : "ThÃªm chuyáº¿n"}
+            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm chuyến"}
           </button>
         </form>
 
@@ -622,46 +622,46 @@ export function TransportTripsPage() {
           <div className="table-card assignment-panel">
             <div className="card-title-row">
               <div>
-                <h2>GÃ¡n phiáº¿u mua</h2>
+                <h2>Gán phiếu mua</h2>
                 <p className="section-hint">
-                  Chá»‰ hiá»ƒn thá»‹ phiáº¿u mua chÆ°a gÃ¡n chuyáº¿n hoáº·c Ä‘ang thuá»™c chuyáº¿n nÃ y.
+                  Chỉ hiển thị phiếu mua chưa gán chuyến hoặc đang thuộc chuyến này.
                 </p>
               </div>
             </div>
 
             <div className="metric-grid compact-metrics">
               <div className="metric-card">
-                <span>Kg phiáº¿u mua Ä‘Ã£ gÃ¡n</span>
+                <span>Kg phiếu mua đã gán</span>
                 <strong>{formatNumber(assignedPurchaseWeight)} kg</strong>
               </div>
               <div className="metric-card">
-                <span>Kg lÃªn ghe</span>
+                <span>Kg lên ghe</span>
                 <strong>{formatNumber(watchedLoadedWeight)} kg</strong>
               </div>
               <div className="metric-card">
-                <span>ChÃªnh lá»‡ch</span>
+                <span>Chênh lệch</span>
                 <strong>{formatNumber(assignedWeightDifference)} kg</strong>
               </div>
             </div>
 
             {assignedWeightDifference !== 0 ? (
               <div className="alert warning-alert">
-                Khá»‘i lÆ°á»£ng phiáº¿u mua Ä‘Ã£ gÃ¡n Ä‘ang lá»‡ch vá»›i kg lÃªn ghe. Báº¡n váº«n cÃ³ thá»ƒ lÆ°u chuyáº¿n.
+                Khối lượng phiếu mua đã gán đang lệch với kg lên ghe. Bạn vẫn có thể lưu chuyến.
               </div>
             ) : null}
 
             {assignablePurchaseSlips.length === 0 ? (
-              <div className="state-box">KhÃ´ng cÃ³ phiáº¿u mua phÃ¹ há»£p Ä‘á»ƒ gÃ¡n.</div>
+              <div className="state-box">Không có phiếu mua phù hợp để gán.</div>
             ) : (
               <div className="table-wrap">
                 <table className="data-table extra-wide-table">
                   <thead>
                     <tr>
-                      <th>GÃ¡n</th>
+                      <th>Gán</th>
                       <th>Ngày mua</th>
-                      <th>NÃ´ng dÃ¢n</th>
-                      <th>CÃ² lÃºa</th>
-                      <th>Loáº¡i lÃºa</th>
+                      <th>Nông dân</th>
+                      <th>Cò lúa</th>
+                      <th>Loại lúa</th>
                       <th>Kg</th>
                       <th>Thành tiền</th>
                       <th>Thanh toán</th>
@@ -679,7 +679,7 @@ export function TransportTripsPage() {
                               checked={checked}
                               disabled={assigningItemId === item.id}
                               onChange={() => void togglePurchaseSlipAssignment(item)}
-                              aria-label={checked ? "Bá» gÃ¡n phiáº¿u mua" : "GÃ¡n phiáº¿u mua"}
+                              aria-label={checked ? "Bỏ gán phiếu mua" : "Gán phiếu mua"}
                             />
                           </td>
                           <td>{formatDate(item.purchase_date)}</td>
@@ -706,7 +706,7 @@ export function TransportTripsPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="TÃ¬m theo mÃ£, ghe, tuyáº¿n, nhÃ  mÃ¡y"
+                placeholder="Tìm theo mã, ghe, tuyến, nhà máy"
               />
             </label>
           </div>
@@ -714,23 +714,23 @@ export function TransportTripsPage() {
           {error ? <div className="alert error-alert">{error}</div> : null}
 
           {loading ? (
-            <div className="state-box">Äang táº£i chuyáº¿n ghe...</div>
+            <div className="state-box">Đang tải chuyến ghe...</div>
           ) : filteredItems.length === 0 ? (
-            <div className="state-box">KhÃ´ng cÃ³ chuyáº¿n ghe phÃ¹ há»£p.</div>
+            <div className="state-box">Không có chuyến ghe phù hợp.</div>
           ) : (
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
                   <tr>
-                    <th>MÃ£</th>
-                    <th>NgÃ y</th>
+                    <th>Mã</th>
+                    <th>Ngày</th>
                     <th>Ghe</th>
-                    <th>Tuyáº¿n</th>
-                    <th>Loáº¡i lÃºa</th>
-                    <th>Hao há»¥t</th>
-                    <th>Chi phÃ­</th>
-                    <th>Thanh toÃ¡n</th>
-                    <th aria-label="Thao tÃ¡c" />
+                    <th>Tuyến</th>
+                    <th>Loại lúa</th>
+                    <th>Hao hụt</th>
+                    <th>Chi phí</th>
+                    <th>Thanh toán</th>
+                    <th aria-label="Thao tác" />
                   </tr>
                 </thead>
                 <tbody>
@@ -755,13 +755,13 @@ export function TransportTripsPage() {
                       <td>{formatPaymentStatus(item.payment_status)}</td>
                       <td>
                         <div className="row-actions">
-                          <button className="icon-button" type="button" onClick={() => exportTripPdf(item)} aria-label="Xuáº¥t PDF">
+                          <button className="icon-button" type="button" onClick={() => exportTripPdf(item)} aria-label="Xuất PDF">
                             <FileDown size={17} aria-hidden="true" />
                           </button>
-                          <button className="icon-button" type="button" onClick={() => exportTripExcel(item)} aria-label="Xuáº¥t Excel">
+                          <button className="icon-button" type="button" onClick={() => exportTripExcel(item)} aria-label="Xuất Excel">
                             <FileDown size={17} aria-hidden="true" />
                           </button>
-                          <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sá»­a">
+                          <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
                             <Edit2 size={17} aria-hidden="true" />
                           </button>
                           <button
@@ -769,7 +769,7 @@ export function TransportTripsPage() {
                             type="button"
                             onClick={() => void deleteItem(item)}
                             disabled={deletingId === item.id}
-                            aria-label="XÃ³a"
+                            aria-label="Xóa"
                           >
                             <Trash2 size={17} aria-hidden="true" />
                           </button>
@@ -859,7 +859,7 @@ function formatRoutePath(stops: TransportRouteStop[]) {
     .slice()
     .sort((a, b) => a.stop_order - b.stop_order)
     .map((stop) => stop.location_name)
-    .join(" â†’ ");
+    .join(" → ");
 }
 
 function formatPaymentStatus(value: PaymentStatus) {

@@ -628,8 +628,12 @@ export function PurchaseSlipsPage() {
 }
 
 function formatAuthorizationLetter(letter: AuthorizationLetter, farmers: Farmer[], brokers: Broker[]) {
-  const farmer = farmers.find((item) => item.id === letter.farmer_id);
-  const broker = brokers.find((item) => item.id === letter.broker_id);
+  const farmer = letter.farmer_id
+    ? farmers.find((item) => item.id === letter.farmer_id)
+    : null;
+  const broker = letter.broker_id
+    ? brokers.find((item) => item.id === letter.broker_id)
+    : null;
   const date = letter.signed_date ? ` - ${formatDate(letter.signed_date)}` : "";
   return `${farmer?.name ?? "Nông dân"} / ${broker?.name ?? "Cò lúa"}${date}`;
 }

@@ -54,27 +54,51 @@ export type Database = {
       authorization_letters: {
         Row: {
           id: string;
-          farmer_id: string;
-          broker_id: string;
+          code: string | null;
+          farmer_id: string | null;
+          broker_id: string | null;
+          authorized_receiver_broker_id: string | null;
           signed_date: string | null;
           valid_from: string | null;
           valid_to: string | null;
+          status: Database["public"]["Enums"]["authorization_letter_status"];
+          pdf_attachment_id: string | null;
           note: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          farmer_id: string;
-          broker_id: string;
+          code?: string | null;
+          farmer_id?: string | null;
+          broker_id?: string | null;
+          authorized_receiver_broker_id?: string | null;
           signed_date?: string | null;
           valid_from?: string | null;
           valid_to?: string | null;
+          status?: Database["public"]["Enums"]["authorization_letter_status"];
+          pdf_attachment_id?: string | null;
           note?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["authorization_letters"]["Insert"]>;
+        Relationships: [];
+      };
+      authorization_letter_purchase_slips: {
+        Row: {
+          authorization_letter_id: string;
+          purchase_slip_id: string;
+          created_at: string;
+        };
+        Insert: {
+          authorization_letter_id: string;
+          purchase_slip_id: string;
+          created_at?: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["authorization_letter_purchase_slips"]["Insert"]
+        >;
         Relationships: [];
       };
       brokers: {
@@ -619,6 +643,7 @@ export type Database = {
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
+      authorization_letter_status: "draft" | "active" | "expired" | "cancelled";
       attachment_type:
         | "citizen_id"
         | "authorization_letter"
