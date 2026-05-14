@@ -545,6 +545,8 @@ a {
 
 .scanner-frame {
   position: relative;
+  overflow: hidden;
+  border-radius: 8px;
 }
 
 .scanner-target-box {
@@ -563,7 +565,7 @@ a {
 
 .scanner-target-label {
   position: absolute;
-  top: -34px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   border-radius: 999px;

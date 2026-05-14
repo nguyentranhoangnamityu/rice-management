@@ -430,7 +430,6 @@ function CitizenQrScanner({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const stoppedRef = useRef(false);
-  const progressTimerRef = useRef<number | null>(null);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const realtimeStatusTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
@@ -438,7 +437,7 @@ function CitizenQrScanner({
   const [uploadScanStatus, setUploadScanStatus] = useState("");
   const [realtimeScanState, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
   const [realtimeScanStatus, setRealtimeScanStatus] = useState("Đang dò QR realtime...");
-  const [scanProgressPercent, setScanProgressPercent] = useState(12);
+  const [scanProgressPercent, setScanProgressPercent] = useState(0);
   const [qrDistanceLevel, setQrDistanceLevel] = useState<"unknown" | "far" | "good" | "near">("unknown");
   const [qrDistanceHint, setQrDistanceHint] = useState("📏 Khoảng cách QR: đưa mã vào khung camera.");
 
@@ -453,7 +452,7 @@ function CitizenQrScanner({
     realtimeStatusTimerRef.current = window.setTimeout(() => {
       setRealtimeScanState("scanning");
       setRealtimeScanStatus("Đang dò QR realtime...");
-      setScanProgressPercent(18);
+      setScanProgressPercent(0);
     }, 1800);
   }
 
@@ -486,29 +485,6 @@ function CitizenQrScanner({
         // Camera listing may fail until permission is granted. Scanner start below reports the actionable error.
       });
   }, []);
-
-  useEffect(() => {
-    if (progressTimerRef.current) {
-      window.clearInterval(progressTimerRef.current);
-      progressTimerRef.current = null;
-    }
-
-    if (realtimeScanState === "detected") return;
-
-    progressTimerRef.current = window.setInterval(() => {
-      setScanProgressPercent((current) => {
-        if (current >= 84) return 28;
-        return current + 6;
-      });
-    }, 380);
-
-    return () => {
-      if (progressTimerRef.current) {
-        window.clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
-      }
-    };
-  }, [realtimeScanState]);
 
   useEffect(() => {
     clearScannerContainer();
@@ -556,10 +532,6 @@ function CitizenQrScanner({
         window.clearTimeout(realtimeStatusTimerRef.current);
         realtimeStatusTimerRef.current = null;
       }
-      if (progressTimerRef.current) {
-        window.clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
-      }
       void stopScanner(scanner, stoppedRef);
       clearScannerContainer();
       scannerRef.current = null;
@@ -578,7 +550,7 @@ function CitizenQrScanner({
     onError(null);
     setRealtimeScanState("scanning");
     setRealtimeScanStatus("Đang dò QR realtime...");
-    setScanProgressPercent(12);
+    setScanProgressPercent(0);
     setQrDistanceLevel("unknown");
     setQrDistanceHint("📏 Khoảng cách QR: đưa mã vào khung camera.");
   }
