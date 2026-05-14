@@ -3,6 +3,7 @@ import {
   Factory,
   FileArchive,
   FileDown,
+  Flag,
   Home,
   Landmark,
   Map,
@@ -11,11 +12,14 @@ import {
   Sprout,
   Truck,
   Users,
+  Wheat,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
   { to: "/dashboard", label: "Tổng quan", icon: Home },
+  { to: "/rice-types", label: "Loại lúa", icon: Wheat },
+  { to: "/seasons", label: "Mùa vụ", icon: Flag },
   { to: "/farmers", label: "Nông dân", icon: Sprout },
   { to: "/brokers", label: "Cò lúa", icon: Users },
   { to: "/purchase-batches", label: "Đợt mua", icon: PackageCheck },
