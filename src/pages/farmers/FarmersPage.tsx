@@ -61,6 +61,7 @@ export function FarmersPage() {
     handleSubmit,
     reset,
     setValue,
+    setFocus,
     formState: { errors },
   } = useForm<FarmerFormValues>({
     resolver: zodResolver(farmerSchema),
@@ -193,8 +194,15 @@ export function FarmersPage() {
       setScannerError("Đã quét QR nhưng chưa nhận diện được thông tin CCCD. Vui lòng nhập tay.");
     } else {
       setScannerError(null);
+      window.setTimeout(() => {
+        setFocus("phone");
+        document.querySelector('input[name="phone"]')?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 120);
     }
-  }, [setValue]);
+  }, [setFocus, setValue]);
 
   return (
     <section className="page">
@@ -314,50 +322,86 @@ export function FarmersPage() {
           ) : filteredItems.length === 0 ? (
             <div className="state-box">Không có nông dân phù hợp.</div>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table wide-table">
-                <thead>
-                  <tr>
-                    <th>Tên</th>
-                    <th>Điện thoại</th>
-                    <th>CCCD</th>
-                    <th>Ngân hàng</th>
-                    <th>Tài khoản</th>
-                    <th aria-label="Thao tác" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredItems.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td>{item.phone || "-"}</td>
-                      <td>{item.citizen_id || "-"}</td>
-                      <td>{item.bank_name || "-"}</td>
-                      <td>
-                        <div>{item.bank_account_number || "-"}</div>
-                        <span className="muted-text">{item.bank_account_name || ""}</span>
-                      </td>
-                      <td>
-                        <div className="row-actions">
-                          <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
-                            <Edit2 size={17} aria-hidden="true" />
-                          </button>
-                          <button
-                            className="icon-button danger"
-                            type="button"
-                            onClick={() => void deleteItem(item)}
-                            disabled={deletingId === item.id}
-                            aria-label="Xóa"
-                          >
-                            <Trash2 size={17} aria-hidden="true" />
-                          </button>
-                        </div>
-                      </td>
+            <>
+              <div className="farmers-mobile-list">
+                {filteredItems.map((item) => (
+                  <article key={`mobile-${item.id}`} className="farmer-mobile-card">
+                    <div className="farmer-mobile-title">
+                      <strong>{item.name}</strong>
+                      <span>CCCD: {item.citizen_id || "-"}</span>
+                    </div>
+
+                    <div className="farmer-mobile-details">
+                      <small>Điện thoại: {item.phone || "-"}</small>
+                      <small>Ngân hàng: {item.bank_name || "-"}</small>
+                      <small>Số TK: {item.bank_account_number || "-"}</small>
+                      {item.bank_account_name ? <small>Tên TK: {item.bank_account_name}</small> : null}
+                    </div>
+
+                    <div className="row-actions mobile-actions">
+                      <button className="secondary-button" type="button" onClick={() => startEdit(item)}>
+                        <Edit2 size={16} aria-hidden="true" />
+                        Sửa
+                      </button>
+                      <button
+                        className="secondary-button danger-action"
+                        type="button"
+                        onClick={() => void deleteItem(item)}
+                        disabled={deletingId === item.id}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                        Xóa
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="table-wrap farmers-desktop-table">
+                <table className="data-table wide-table">
+                  <thead>
+                    <tr>
+                      <th>Tên</th>
+                      <th>Điện thoại</th>
+                      <th>CCCD</th>
+                      <th>Ngân hàng</th>
+                      <th>Tài khoản</th>
+                      <th aria-label="Thao tác" />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredItems.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.name}</td>
+                        <td>{item.phone || "-"}</td>
+                        <td>{item.citizen_id || "-"}</td>
+                        <td>{item.bank_name || "-"}</td>
+                        <td>
+                          <div>{item.bank_account_number || "-"}</div>
+                          <span className="muted-text">{item.bank_account_name || ""}</span>
+                        </td>
+                        <td>
+                          <div className="row-actions">
+                            <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
+                              <Edit2 size={17} aria-hidden="true" />
+                            </button>
+                            <button
+                              className="icon-button danger"
+                              type="button"
+                              onClick={() => void deleteItem(item)}
+                              disabled={deletingId === item.id}
+                              aria-label="Xóa"
+                            >
+                              <Trash2 size={17} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -407,6 +451,13 @@ function CitizenQrScanner({
     }, 1800);
   }
 
+  const clearScannerContainer = useCallback(() => {
+    const container = document.getElementById(scannerElementId);
+    if (container) {
+      container.innerHTML = "";
+    }
+  }, [scannerElementId]);
+
   useEffect(() => {
     Html5Qrcode.getCameras()
       .then((devices) => {
@@ -418,6 +469,7 @@ function CitizenQrScanner({
   }, []);
 
   useEffect(() => {
+    clearScannerContainer();
     const scanner = new Html5Qrcode(scannerElementId, {
       verbose: false,
       formatsToSupport: getQrCodeFormats(),
@@ -461,9 +513,10 @@ function CitizenQrScanner({
         realtimeStatusTimerRef.current = null;
       }
       void stopScanner(scanner, stoppedRef);
+      clearScannerContainer();
       scannerRef.current = null;
     };
-  }, [onError, onScan, scannerElementId, selectedCameraId]);
+  }, [clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
@@ -550,7 +603,9 @@ function CitizenQrScanner({
     <div className="form-card">
       <div className="card-title-row">
         <h2>Quét CCCD</h2>
-        <div className="row-actions">
+      </div>
+      <div className="scanner-action-group">
+        <div className="scanner-primary-actions">
           <input
             ref={fileInputRef}
             type="file"
@@ -558,32 +613,22 @@ function CitizenQrScanner({
             hidden
             onChange={(event) => void scanUploadedFile(event.target.files?.[0] ?? null)}
           />
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <ImageUp size={17} aria-hidden="true" />
-            Upload QR
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => void captureFrameAndScan()}
-          >
+          <button className="secondary-button" type="button" onClick={() => void captureFrameAndScan()}>
             <Camera size={17} aria-hidden="true" />
             Chụp để quét
           </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={switchCamera}
-            disabled={cameras.length < 2}
-          >
+          <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>
+            <ImageUp size={17} aria-hidden="true" />
+            Upload QR
+          </button>
+        </div>
+        <div className="scanner-secondary-actions">
+          <button className="secondary-button" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
             Đổi camera
           </button>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Đóng scanner">
+          <button className="secondary-button" type="button" onClick={onClose} aria-label="Đóng scanner">
             <X size={18} aria-hidden="true" />
+            Đóng quét
           </button>
         </div>
       </div>
@@ -601,21 +646,21 @@ function CitizenQrScanner({
         </div>
       ) : (
         <p className="section-hint">
-          Đưa mã QR vào vùng camera, hệ thống quét realtime liên tục ngay cả khi tay rung nhẹ hoặc thay
-          đổi khoảng cách. Đang dùng: {currentCameraLabel}.
+          Đưa mã QR vào khung camera. Hệ thống quét realtime liên tục. Đang dùng: {currentCameraLabel}.
         </p>
       )}
 
       {uploadScanStatus ? <p className="section-hint">{uploadScanStatus}</p> : null}
 
       {rawText ? (
-        <>
+        <details className="scan-debug-details">
+          <summary>Xem dữ liệu QR đã quét</summary>
           <label className="field">
             <span>Raw QR text</span>
             <textarea value={rawText} readOnly rows={4} />
           </label>
           {parsed ? <ParserDebug parsed={parsed} /> : null}
-        </>
+        </details>
       ) : null}
     </div>
   );
