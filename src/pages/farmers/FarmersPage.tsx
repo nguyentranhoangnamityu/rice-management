@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
+import { Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { z } from "zod";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
@@ -384,17 +384,44 @@ function CitizenQrScanner({
 }: CitizenQrScannerProps) {
   const scannerElementId = useId().replace(/:/g, "-");
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const stoppedRef = useRef(false);
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+  const [uploadScanStatus, setUploadScanStatus] = useState("");
 
   useEffect(() => {
-    const scanner = new Html5Qrcode(scannerElementId);
+    Html5Qrcode.getCameras()
+      .then((devices) => {
+        setCameras(devices.map((device) => ({ id: device.id, label: device.label })));
+      })
+      .catch(() => {
+        // Camera listing may fail until permission is granted. Scanner start below reports the actionable error.
+      });
+  }, []);
+
+  useEffect(() => {
+    const scanner = new Html5Qrcode(scannerElementId, {
+      verbose: false,
+      formatsToSupport: getQrCodeFormats(),
+    });
     scannerRef.current = scanner;
     stoppedRef.current = false;
+    const cameraConfig = selectedCameraId
+      ? selectedCameraId
+      : { facingMode: { exact: "environment" } };
 
     scanner
       .start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
+        cameraConfig,
+        {
+          fps: 10,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
+            const size = Math.max(180, Math.min(edge, 420));
+            return { width: size, height: size };
+          },
+        },
         (decodedText) => {
           onScan(decodedText);
           void stopScanner(scanner, stoppedRef);
@@ -411,26 +438,98 @@ function CitizenQrScanner({
       void stopScanner(scanner, stoppedRef);
       scannerRef.current = null;
     };
-  }, [onError, onScan, scannerElementId]);
+  }, [onError, onScan, scannerElementId, selectedCameraId]);
+
+  function switchCamera() {
+    if (cameras.length === 0) return;
+
+    setSelectedCameraId((currentId) => {
+      if (!currentId) return cameras[0].id;
+      const currentIndex = cameras.findIndex((camera) => camera.id === currentId);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameras.length : 0;
+      return cameras[nextIndex].id;
+    });
+    onError(null);
+  }
+
+  async function scanUploadedFile(file: File | null) {
+    if (!file) return;
+
+    try {
+      onError(null);
+      setUploadScanStatus("Đang đọc ảnh QR...");
+      const scanner = scannerRef.current ?? new Html5Qrcode(scannerElementId, {
+        verbose: false,
+        formatsToSupport: getQrCodeFormats(),
+      });
+      scannerRef.current = scanner;
+      await stopScanner(scanner, stoppedRef);
+      const decodedText = await scanFileWithEnhancement(scanner, file, (message) =>
+        setUploadScanStatus(message),
+      );
+      setUploadScanStatus("Đã đọc QR từ ảnh.");
+      onScan(decodedText);
+    } catch (scanError) {
+      setUploadScanStatus("");
+      onError(`Không đọc được QR từ ảnh đã chọn: ${formatErrorMessage(scanError)}`);
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  const currentCameraLabel =
+    cameras.find((camera) => camera.id === selectedCameraId)?.label ||
+    (selectedCameraId ? "Camera đã chọn" : "Camera sau");
 
   return (
     <div className="form-card">
       <div className="card-title-row">
         <h2>Quét CCCD</h2>
-        <button className="icon-button" type="button" onClick={onClose} aria-label="Đóng scanner">
-          <X size={18} aria-hidden="true" />
-        </button>
+        <div className="row-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(event) => void scanUploadedFile(event.target.files?.[0] ?? null)}
+          />
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImageUp size={17} aria-hidden="true" />
+            Upload QR
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={switchCamera}
+            disabled={cameras.length < 2}
+          >
+            Đổi camera
+          </button>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Đóng scanner">
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div id={scannerElementId} className="qr-scanner" />
 
       {scannerError ? (
         <div className="alert error-alert">
-          {scannerError} Bạn vẫn có thể nhập thông tin CCCD thủ công.
+          <strong>Lỗi camera:</strong> {scannerError} Bạn vẫn có thể nhập thông tin CCCD thủ công.
         </div>
       ) : (
-        <p className="section-hint">Cho phép camera, đưa mã QR trên CCCD vào khung quét.</p>
+        <p className="section-hint">
+          Đưa mã QR vào giữa khung, giữ yên 1-2 giây. Đang dùng: {currentCameraLabel}.
+        </p>
       )}
+
+      {uploadScanStatus ? <p className="section-hint">{uploadScanStatus}</p> : null}
 
       {rawText ? (
         <>
@@ -443,6 +542,150 @@ function CitizenQrScanner({
       ) : null}
     </div>
   );
+}
+
+function getQrCodeFormats() {
+  if ("QR_CODE" in Html5QrcodeSupportedFormats) {
+    return [Html5QrcodeSupportedFormats.QR_CODE];
+  }
+
+  return undefined;
+}
+
+async function scanFileWithEnhancement(
+  scanner: Html5Qrcode,
+  file: File,
+  onStatus: (message: string) => void,
+) {
+  try {
+    onStatus("Đang thử đọc ảnh gốc...");
+    return await scanner.scanFile(file, false);
+  } catch {
+    // Continue with generated crops and threshold variants.
+  }
+
+  const image = await loadImage(file);
+  const variants = buildQrImageVariants(image);
+
+  for (const [index, variant] of variants.entries()) {
+    onStatus(`Đang thử vùng QR ${index + 1}/${variants.length}...`);
+    const variantFile = await canvasToFile(variant.canvas, `qr-variant-${index}.png`);
+    try {
+      const decodedText = await scanner.scanFile(variantFile, false);
+      return decodedText;
+    } catch {
+      // Try next variant.
+    }
+  }
+
+  throw new Error("Ảnh có thể bị mờ, nghiêng quá nhiều hoặc QR quá sát mép. Hãy crop gần mã QR hơn rồi upload lại.");
+}
+
+function buildQrImageVariants(image: HTMLImageElement) {
+  const variants: Array<{ canvas: HTMLCanvasElement }> = [];
+  const minEdge = Math.min(image.naturalWidth, image.naturalHeight);
+  const cropSizes = [0.32, 0.38, 0.45, 0.55, 0.7].map((ratio) =>
+    Math.round(minEdge * ratio),
+  );
+  const centers = [
+    [0.5, 0.5],
+    [0.45, 0.45],
+    [0.55, 0.45],
+    [0.45, 0.55],
+    [0.55, 0.55],
+    [0.5, 0.35],
+    [0.5, 0.65],
+    [0.35, 0.5],
+    [0.65, 0.5],
+  ];
+  const modes: Array<"raw" | "gray" | "threshold"> = ["raw", "gray", "threshold"];
+
+  for (const size of cropSizes) {
+    for (const [centerXRatio, centerYRatio] of centers) {
+      const x = clamp(Math.round(image.naturalWidth * centerXRatio - size / 2), 0, image.naturalWidth - size);
+      const y = clamp(Math.round(image.naturalHeight * centerYRatio - size / 2), 0, image.naturalHeight - size);
+
+      for (const mode of modes) {
+        variants.push({
+          canvas: renderCropVariant(image, x, y, size, mode),
+        });
+      }
+    }
+  }
+
+  return variants;
+}
+
+function renderCropVariant(
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  size: number,
+  mode: "raw" | "gray" | "threshold",
+) {
+  const outputSize = Math.max(360, Math.min(900, size * 2));
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const context = canvas.getContext("2d");
+  if (!context) return canvas;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, outputSize, outputSize);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, x, y, size, size, 0, 0, outputSize, outputSize);
+
+  if (mode === "raw") return canvas;
+
+  const imageData = context.getImageData(0, 0, outputSize, outputSize);
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const gray =
+      imageData.data[index] * 0.299 +
+      imageData.data[index + 1] * 0.587 +
+      imageData.data[index + 2] * 0.114;
+    const value = mode === "threshold" ? (gray < 135 ? 0 : 255) : gray;
+    imageData.data[index] = value;
+    imageData.data[index + 1] = value;
+    imageData.data[index + 2] = value;
+  }
+  context.putImageData(imageData, 0, 0);
+
+  return canvas;
+}
+
+function loadImage(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Không thể mở ảnh đã chọn."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function canvasToFile(canvas: HTMLCanvasElement, fileName: string) {
+  return new Promise<File>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Không thể xử lý ảnh QR."));
+        return;
+      }
+
+      resolve(new File([blob], fileName, { type: "image/png" }));
+    }, "image/png");
+  });
+}
+
+function clamp(value: number, min: number, max: number) {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
 }
 
 function ParserDebug({ parsed }: { parsed: ParsedCitizenQr }) {
@@ -602,13 +845,17 @@ function readString(source: Record<string, unknown>, keys: string[]) {
 }
 
 function formatScannerError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatErrorMessage(error);
 
   if (message.toLowerCase().includes("permission")) {
     return "Không có quyền truy cập camera. Vui lòng cấp quyền camera hoặc nhập thủ công.";
   }
 
   return `Không thể mở camera: ${message}`;
+}
+
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalize(value: string | null | undefined) {
