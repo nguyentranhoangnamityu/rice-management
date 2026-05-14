@@ -1,9 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, FileText, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, FileDown, FileText, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { exportPdf } from "../../lib/export";
+import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -325,6 +325,21 @@ export function PurchaseSlipsPage() {
     });
   }
 
+  function exportSlipPdf(item: SlipRow) {
+    exportPdf({
+      title: `Purchase slip ${formatDate(item.purchase_date)}`,
+      fileName: `purchase-slip-${item.purchase_date}-${item.id.slice(0, 8)}.pdf`,
+      tables: [buildSlipExportTable(item)],
+    });
+  }
+
+  function exportSlipExcel(item: SlipRow) {
+    exportExcel({
+      fileName: `purchase-slip-${item.purchase_date}-${item.id.slice(0, 8)}.xlsx`,
+      sheets: [buildSlipExportTable(item)],
+    });
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -555,6 +570,24 @@ export function PurchaseSlipsPage() {
                       <td>
                         <div className="row-actions">
                           <button
+                            className="icon-button"
+                            type="button"
+                            onClick={() => exportSlipPdf(item)}
+                            aria-label="Xuất PDF"
+                            title="Xuất PDF"
+                          >
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="icon-button"
+                            type="button"
+                            onClick={() => exportSlipExcel(item)}
+                            aria-label="Xuất Excel"
+                            title="Xuất Excel"
+                          >
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
+                          <button
                             className="secondary-button"
                             type="button"
                             onClick={() => generateAuthorizationLetter(item)}
@@ -599,6 +632,29 @@ function formatAuthorizationLetter(letter: AuthorizationLetter, farmers: Farmer[
   const broker = brokers.find((item) => item.id === letter.broker_id);
   const date = letter.signed_date ? ` - ${formatDate(letter.signed_date)}` : "";
   return `${farmer?.name ?? "Nông dân"} / ${broker?.name ?? "Cò lúa"}${date}`;
+}
+
+function buildSlipExportTable(item: SlipRow) {
+  return {
+    title: "Purchase slip",
+    headers: ["Field", "Value"],
+    rows: [
+      ["Purchase date", formatDate(item.purchase_date)],
+      ["Season", item.season?.name ?? "-"],
+      ["Farmer", item.farmer?.name ?? "-"],
+      ["Broker", item.broker?.name ?? "-"],
+      ["Authorized receiver broker", item.authorizedReceiverBroker?.name ?? "-"],
+      ["Rice type", item.riceType?.name ?? "-"],
+      ["Transport trip", item.transportTrip?.code ?? "-"],
+      ["Weight kg", item.weight_kg],
+      ["Unit price", item.unit_price],
+      ["Total amount", item.total_amount],
+      ["Broker commission per kg", item.broker_commission_per_kg],
+      ["Broker commission total", item.broker_commission_total],
+      ["Payment status", formatPaymentStatus(item.payment_status)],
+      ["Note", item.note ?? "-"],
+    ],
+  };
 }
 
 function formatPaymentStatus(value: PaymentStatus) {
