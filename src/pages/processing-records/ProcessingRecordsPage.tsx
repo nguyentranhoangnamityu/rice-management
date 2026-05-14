@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -265,6 +266,26 @@ export function ProcessingRecordsPage() {
     setDeletingId(null);
   }
 
+  function exportRecordPdf(item: ProcessingRecordRow) {
+    exportPdf({
+      title: `Processing record ${item.trip?.code ?? ""}`,
+      details: [
+        `Date: ${formatDate(item.processed_date)}`,
+        `Factory: ${item.factory?.name ?? "-"}`,
+        `Service: ${formatServiceType(item.service_type)}`,
+      ],
+      fileName: `processing-record-${item.trip?.code ?? item.id}.pdf`,
+      tables: [buildProcessingExportTable(item)],
+    });
+  }
+
+  function exportRecordExcel(item: ProcessingRecordRow) {
+    exportExcel({
+      fileName: `processing-record-${item.trip?.code ?? item.id}.xlsx`,
+      sheets: [buildProcessingExportTable(item)],
+    });
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -465,6 +486,12 @@ export function ProcessingRecordsPage() {
                       <td>{formatMoney(item.total_cost)}</td>
                       <td>
                         <div className="row-actions">
+                          <button className="icon-button" type="button" onClick={() => exportRecordPdf(item)} aria-label="Xuất PDF">
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
+                          <button className="icon-button" type="button" onClick={() => exportRecordExcel(item)} aria-label="Xuất Excel">
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
                           <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
                             <Edit2 size={17} aria-hidden="true" />
                           </button>
@@ -508,6 +535,26 @@ function calculateProcessing({
     lossWeight: round2(lossWeight),
     lossPercent: round4(lossPercent),
     totalCost: round2(totalCost),
+  };
+}
+
+function buildProcessingExportTable(item: ProcessingRecordRow) {
+  return {
+    title: "Processing record",
+    headers: ["Field", "Value"],
+    rows: [
+      ["Transport trip", item.trip?.code ?? "-"],
+      ["Processed date", formatDate(item.processed_date)],
+      ["Factory", item.factory?.name ?? "-"],
+      ["Service type", formatServiceType(item.service_type)],
+      ["Rice type", item.riceType?.name ?? "-"],
+      ["Input weight", item.input_weight_kg],
+      ["Output weight", item.output_weight_kg],
+      ["Loss weight", item.loss_weight_kg],
+      ["Loss percent", item.loss_percent],
+      ["Unit price", item.unit_price],
+      ["Total cost", item.total_cost],
+    ],
   };
 }
 

@@ -1,9 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Edit2, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Edit2, FileDown, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useParams } from "react-router-dom";
 import { z } from "zod";
+import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -265,6 +266,22 @@ export function PurchaseBatchDetailPage() {
     setDeletingId(null);
   }
 
+  function exportBatchPdf() {
+    exportPdf({
+      title: `Purchase batch ${batch?.code ?? ""}`,
+      details: batch ? [`Date range: ${formatDateRange(batch.from_date, batch.to_date)}`] : [],
+      fileName: `purchase-batch-${batch?.code ?? "export"}.pdf`,
+      tables: [buildBatchExportTable(items, totals)],
+    });
+  }
+
+  function exportBatchExcel() {
+    exportExcel({
+      fileName: `purchase-batch-${batch?.code ?? "export"}.xlsx`,
+      sheets: [buildBatchExportTable(items, totals)],
+    });
+  }
+
   if (loading) {
     return (
       <section className="page">
@@ -291,6 +308,16 @@ export function PurchaseBatchDetailPage() {
           </Link>
           <h1>{batch.code}</h1>
           <p>{formatDateRange(batch.from_date, batch.to_date)}</p>
+        </div>
+        <div className="header-actions">
+          <button className="secondary-button" type="button" onClick={exportBatchPdf}>
+            <FileDown size={17} aria-hidden="true" />
+            PDF
+          </button>
+          <button className="secondary-button" type="button" onClick={exportBatchExcel}>
+            <FileDown size={17} aria-hidden="true" />
+            Excel
+          </button>
         </div>
       </header>
 
@@ -503,6 +530,36 @@ export function PurchaseBatchDetailPage() {
 function formatAuthorizationLetter(letter: AuthorizationLetter) {
   const signedDate = letter.signed_date ? formatDate(letter.signed_date) : "chưa có ngày ký";
   return `Giấy ủy quyền ${signedDate}`;
+}
+
+function buildBatchExportTable(
+  items: PurchaseItemRow[],
+  totals: { weight: number; amount: number; commission: number },
+) {
+  return {
+    title: "Purchase items",
+    headers: [
+      "Farmer",
+      "Broker",
+      "Rice type",
+      "Weight",
+      "Unit price",
+      "Total amount",
+      "Broker commission",
+    ],
+    rows: [
+      ...items.map((item) => [
+        item.farmer?.name ?? "-",
+        item.broker?.name ?? "-",
+        item.riceType?.name ?? "-",
+        item.weight_kg,
+        item.unit_price,
+        item.total_amount,
+        item.broker_commission_total,
+      ]),
+      ["TOTAL", "", "", totals.weight, "", totals.amount, totals.commission],
+    ],
+  };
 }
 
 function formatPaymentStatus(value: PaymentStatus) {

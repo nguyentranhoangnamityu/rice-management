@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -413,6 +414,26 @@ export function TransportTripsPage() {
     setAssigningItemId(null);
   }
 
+  function exportTripPdf(item: TripRow) {
+    exportPdf({
+      title: `Transport trip ${item.code}`,
+      details: [
+        `Date: ${formatDate(item.trip_date)}`,
+        `Boat: ${item.boat?.boat_name ?? "-"}`,
+        `Route: ${item.route ? formatRoutePath(item.route.stops) : "-"}`,
+      ],
+      fileName: `transport-trip-${item.code}.pdf`,
+      tables: [buildTripExportTable(item)],
+    });
+  }
+
+  function exportTripExcel(item: TripRow) {
+    exportExcel({
+      fileName: `transport-trip-${item.code}.xlsx`,
+      sheets: [buildTripExportTable(item)],
+    });
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -740,6 +761,12 @@ export function TransportTripsPage() {
                       <td>{formatPaymentStatus(item.payment_status)}</td>
                       <td>
                         <div className="row-actions">
+                          <button className="icon-button" type="button" onClick={() => exportTripPdf(item)} aria-label="Xuất PDF">
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
+                          <button className="icon-button" type="button" onClick={() => exportTripExcel(item)} aria-label="Xuất Excel">
+                            <FileDown size={17} aria-hidden="true" />
+                          </button>
                           <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
                             <Edit2 size={17} aria-hidden="true" />
                           </button>
@@ -798,6 +825,29 @@ function calculateTrip({
     lossPercent: round4(lossPercent),
     transportCost: round2(transportCost),
     totalCost: round2(totalCost),
+  };
+}
+
+function buildTripExportTable(item: TripRow) {
+  return {
+    title: "Transport trip",
+    headers: ["Field", "Value"],
+    rows: [
+      ["Trip code", item.code],
+      ["Date", formatDate(item.trip_date)],
+      ["Boat", item.boat?.boat_name ?? "-"],
+      ["Route", item.route ? formatRoutePath(item.route.stops) : "-"],
+      ["Rice type", item.riceType?.name ?? "-"],
+      ["Loaded weight", item.loaded_weight_kg],
+      ["Unloaded weight", item.unloaded_weight_kg],
+      ["Loss weight", item.loss_weight_kg],
+      ["Loss percent", item.loss_percent],
+      ["Transport cost", item.transport_cost],
+      ["Fuel fee", item.fuel_fee],
+      ["Labor fee", item.labor_fee],
+      ["Weighing fee", item.weighing_fee],
+      ["Total cost", item.total_cost],
+    ],
   };
 }
 

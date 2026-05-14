@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { FileDown } from "lucide-react";
+import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -214,12 +216,37 @@ export function DebtsPage() {
     transportTrips,
   ]);
 
+  function exportDebtsPdf() {
+    exportPdf({
+      title: "Debt summary",
+      fileName: "debt-summary.pdf",
+      tables: buildDebtExportTables(summaries),
+    });
+  }
+
+  function exportDebtsExcel() {
+    exportExcel({
+      fileName: "debt-summary.xlsx",
+      sheets: buildDebtExportTables(summaries),
+    });
+  }
+
   return (
     <section className="page">
       <header className="page-header">
         <div>
           <h1>Công nợ</h1>
           <p>Tổng hợp công nợ phát sinh từ dữ liệu mua lúa, vận chuyển và xử lý.</p>
+        </div>
+        <div className="header-actions">
+          <button className="secondary-button" type="button" onClick={exportDebtsPdf}>
+            <FileDown size={17} aria-hidden="true" />
+            PDF
+          </button>
+          <button className="secondary-button" type="button" onClick={exportDebtsExcel}>
+            <FileDown size={17} aria-hidden="true" />
+            Excel
+          </button>
         </div>
       </header>
 
@@ -370,6 +397,44 @@ function DebtSection({ title, children }: { title: string; children: React.React
       {children}
     </section>
   );
+}
+
+function buildDebtExportTables(summaries: {
+  brokerRows: BrokerDebtRow[];
+  transportRows: TransportDebtRow[];
+  factoryRows: FactoryDebtRow[];
+}) {
+  return [
+    {
+      title: "Broker debts",
+      headers: ["Broker", "Total kg", "Total commission"],
+      rows: summaries.brokerRows.map((row) => [
+        row.brokerName,
+        row.totalWeight,
+        row.totalCommission,
+      ]),
+    },
+    {
+      title: "Transport debts",
+      headers: ["Boat", "Owner", "Total trips", "Total cost"],
+      rows: summaries.transportRows.map((row) => [
+        row.boatName,
+        row.ownerName,
+        row.totalTrips,
+        row.totalCost,
+      ]),
+    },
+    {
+      title: "Factory debts",
+      headers: ["Factory", "Total records", "Total input weight", "Total cost"],
+      rows: summaries.factoryRows.map((row) => [
+        row.factoryName,
+        row.totalRecords,
+        row.totalInputWeight,
+        row.totalCost,
+      ]),
+    },
+  ];
 }
 
 function formatNumber(value: number) {
