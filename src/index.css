@@ -315,8 +315,28 @@ a {
   font-weight: 700;
 }
 
+.secondary-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #cbd6cc;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #264431;
+  cursor: pointer;
+  padding: 0 10px;
+  font-weight: 650;
+}
+
+.secondary-button:hover {
+  background: #eef3ed;
+}
+
 .primary-button:disabled,
-.icon-button:disabled {
+.icon-button:disabled,
+.secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -414,6 +434,56 @@ a {
   font-size: 13px;
 }
 
+.stops-editor {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e7ece5;
+  padding-top: 4px;
+}
+
+.stops-editor h3 {
+  margin: 0;
+  color: #18261e;
+  font-size: 16px;
+}
+
+.stop-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stop-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 38px;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid #e1e8df;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.stop-order {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #dfeee4;
+  color: #174d31;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.stop-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.form-error {
+  color: #b42318;
+  font-size: 13px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -465,5 +535,14 @@ a {
 
   .search-field {
     width: 100%;
+  }
+
+  .stop-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .stop-item > .icon-button {
+    grid-column: 2;
+    justify-self: end;
   }
 }
