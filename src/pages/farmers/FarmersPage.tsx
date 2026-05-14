@@ -387,9 +387,25 @@ function CitizenQrScanner({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const stoppedRef = useRef(false);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
+  const realtimeStatusTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [uploadScanStatus, setUploadScanStatus] = useState("");
+  const [realtimeScanState, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
+  const [realtimeScanStatus, setRealtimeScanStatus] = useState("Đang dò QR realtime...");
+
+  function markRealtimeDetected() {
+    setRealtimeScanState("detected");
+    setRealtimeScanStatus("Đã nhận QR, đang điền thông tin...");
+
+    if (realtimeStatusTimerRef.current) {
+      window.clearTimeout(realtimeStatusTimerRef.current);
+    }
+    realtimeStatusTimerRef.current = window.setTimeout(() => {
+      setRealtimeScanState("scanning");
+      setRealtimeScanStatus("Đang dò QR realtime...");
+    }, 1800);
+  }
 
   useEffect(() => {
     Html5Qrcode.getCameras()
@@ -427,6 +443,7 @@ function CitizenQrScanner({
           if (isDuplicate) return;
 
           lastScanRef.current = { text: decodedText, at: now };
+          markRealtimeDetected();
           setUploadScanStatus("Đã nhận dữ liệu QR, đang quét realtime...");
           onScan(decodedText);
         },
@@ -439,6 +456,10 @@ function CitizenQrScanner({
       });
 
     return () => {
+      if (realtimeStatusTimerRef.current) {
+        window.clearTimeout(realtimeStatusTimerRef.current);
+        realtimeStatusTimerRef.current = null;
+      }
       void stopScanner(scanner, stoppedRef);
       scannerRef.current = null;
     };
@@ -454,6 +475,8 @@ function CitizenQrScanner({
       return cameras[nextIndex].id;
     });
     onError(null);
+    setRealtimeScanState("scanning");
+    setRealtimeScanStatus("Đang dò QR realtime...");
   }
 
   async function scanUploadedFile(file: File | null) {
@@ -566,6 +589,11 @@ function CitizenQrScanner({
       </div>
 
       <div id={scannerElementId} className="qr-scanner" />
+
+      <div className="calculation-box" aria-live="polite">
+        <span>Trạng thái quét realtime</span>
+        <small>{realtimeScanState === "scanning" ? "🔍 " : "✅ "}{realtimeScanStatus}</small>
+      </div>
 
       {scannerError ? (
         <div className="alert error-alert">
