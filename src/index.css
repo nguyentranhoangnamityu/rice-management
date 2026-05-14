@@ -376,6 +376,13 @@ a {
   color: #9f2419;
 }
 
+.warning-alert {
+  margin: 12px 0;
+  border: 1px solid #f6d58d;
+  background: #fff9e8;
+  color: #7a4b00;
+}
+
 .state-box {
   display: grid;
   min-height: 160px;
@@ -478,6 +485,30 @@ a {
   color: #17211b;
   font-size: 22px;
   line-height: 1.25;
+}
+
+.compact-metrics {
+  margin-top: 12px;
+}
+
+.compact-metrics .metric-card {
+  padding: 12px;
+}
+
+.compact-metrics .metric-card strong {
+  font-size: 18px;
+}
+
+.section-hint {
+  margin: 4px 0 0;
+  color: #65736a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.assignment-panel {
+  display: grid;
+  gap: 12px;
 }
 
 .calculation-box {

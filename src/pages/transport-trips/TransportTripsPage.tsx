@@ -13,6 +13,10 @@ type TransportRouteStop = Tables<"transport_route_stops">;
 type Factory = Tables<"factories">;
 type Season = Tables<"seasons">;
 type RiceType = Tables<"rice_types">;
+type PurchaseItem = Tables<"purchase_items">;
+type PurchaseBatch = Tables<"purchase_batches">;
+type Farmer = Tables<"farmers">;
+type Broker = Tables<"brokers">;
 type PaymentStatus = Enums<"payment_status">;
 type TransportPriceBasis = Enums<"transport_price_basis">;
 
@@ -25,6 +29,13 @@ type TripRow = TransportTrip & {
   route?: RouteWithStops | null;
   factory?: Factory | null;
   season?: Season | null;
+  riceType?: RiceType | null;
+};
+
+type PurchaseItemAssignment = PurchaseItem & {
+  batch?: PurchaseBatch | null;
+  farmer?: Farmer | null;
+  broker?: Broker | null;
   riceType?: RiceType | null;
 };
 
@@ -87,6 +98,8 @@ export function TransportTripsPage() {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
+  const [purchaseItems, setPurchaseItems] = useState<PurchaseItemAssignment[]>([]);
+  const [assigningItemId, setAssigningItemId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -140,12 +153,42 @@ export function TransportTripsPage() {
   }, [items, search]);
 
   const formTitle = editingItem ? "Sửa chuyến ghe" : "Thêm chuyến ghe";
+  const assignablePurchaseItems = useMemo(() => {
+    if (!editingItem) return [];
+
+    return purchaseItems.filter(
+      (item) => item.transport_trip_id === null || item.transport_trip_id === editingItem.id,
+    );
+  }, [editingItem, purchaseItems]);
+  const assignedPurchaseWeight = useMemo(
+    () =>
+      editingItem
+        ? purchaseItems
+            .filter((item) => item.transport_trip_id === editingItem.id)
+            .reduce((total, item) => total + item.weight_kg, 0)
+        : 0,
+    [editingItem, purchaseItems],
+  );
+  const assignedWeightDifference = editingItem
+    ? assignedPurchaseWeight - watchedLoadedWeight
+    : 0;
 
   async function loadData() {
     setLoading(true);
     setError(null);
 
-    const [tripsResult, boatsResult, routesResult, factoriesResult, seasonsResult, riceTypesResult] =
+    const [
+      tripsResult,
+      boatsResult,
+      routesResult,
+      factoriesResult,
+      seasonsResult,
+      riceTypesResult,
+      purchaseItemsResult,
+      purchaseBatchesResult,
+      farmersResult,
+      brokersResult,
+    ] =
       await Promise.all([
         supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
         supabase.from("transporter_boats").select("*").order("boat_name", { ascending: true }),
@@ -153,6 +196,10 @@ export function TransportTripsPage() {
         supabase.from("factories").select("*").order("name", { ascending: true }),
         supabase.from("seasons").select("*").order("from_date", { ascending: false }),
         supabase.from("rice_types").select("*").order("name", { ascending: true }),
+        supabase.from("purchase_items").select("*").order("created_at", { ascending: false }),
+        supabase.from("purchase_batches").select("*").order("from_date", { ascending: false }),
+        supabase.from("farmers").select("*").order("name", { ascending: true }),
+        supabase.from("brokers").select("*").order("name", { ascending: true }),
       ]);
 
     const firstError =
@@ -161,7 +208,11 @@ export function TransportTripsPage() {
       routesResult.error ??
       factoriesResult.error ??
       seasonsResult.error ??
-      riceTypesResult.error;
+      riceTypesResult.error ??
+      purchaseItemsResult.error ??
+      purchaseBatchesResult.error ??
+      farmersResult.error ??
+      brokersResult.error;
 
     if (firstError) {
       setError(firstError.message);
@@ -198,17 +249,32 @@ export function TransportTripsPage() {
     const factoryRows = factoriesResult.data ?? [];
     const seasonRows = seasonsResult.data ?? [];
     const riceTypeRows = riceTypesResult.data ?? [];
+    const purchaseBatchRows = purchaseBatchesResult.data ?? [];
+    const farmerRows = farmersResult.data ?? [];
+    const brokerRows = brokersResult.data ?? [];
     const boatMap = new Map(boatRows.map((boat) => [boat.id, boat]));
     const routeMap = new Map(routeRowsWithStops.map((route) => [route.id, route]));
     const factoryMap = new Map(factoryRows.map((factory) => [factory.id, factory]));
     const seasonMap = new Map(seasonRows.map((season) => [season.id, season]));
     const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
+    const purchaseBatchMap = new Map(purchaseBatchRows.map((batch) => [batch.id, batch]));
+    const farmerMap = new Map(farmerRows.map((farmer) => [farmer.id, farmer]));
+    const brokerMap = new Map(brokerRows.map((broker) => [broker.id, broker]));
 
     setBoats(boatRows);
     setRoutes(routeRowsWithStops);
     setFactories(factoryRows);
     setSeasons(seasonRows);
     setRiceTypes(riceTypeRows);
+    setPurchaseItems(
+      (purchaseItemsResult.data ?? []).map((item) => ({
+        ...item,
+        batch: purchaseBatchMap.get(item.purchase_batch_id) ?? null,
+        farmer: farmerMap.get(item.farmer_id) ?? null,
+        broker: brokerMap.get(item.broker_id) ?? null,
+        riceType: riceTypeMap.get(item.rice_type_id) ?? null,
+      })),
+    );
     setItems(
       (tripsResult.data ?? []).map((trip) => ({
         ...trip,
@@ -324,6 +390,27 @@ export function TransportTripsPage() {
     }
 
     setDeletingId(null);
+  }
+
+  async function togglePurchaseItemAssignment(item: PurchaseItemAssignment) {
+    if (!editingItem) return;
+
+    setAssigningItemId(item.id);
+    setError(null);
+
+    const nextTripId = item.transport_trip_id === editingItem.id ? null : editingItem.id;
+    const { error: assignmentError } = await supabase
+      .from("purchase_items")
+      .update({ transport_trip_id: nextTripId })
+      .eq("id", item.id);
+
+    if (assignmentError) {
+      setError(assignmentError.message);
+    } else {
+      await loadData();
+    }
+
+    setAssigningItemId(null);
   }
 
   return (
@@ -517,6 +604,85 @@ export function TransportTripsPage() {
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm chuyến"}
           </button>
         </form>
+
+        {editingItem ? (
+          <div className="table-card assignment-panel">
+            <div className="card-title-row">
+              <div>
+                <h2>Gán phiếu mua</h2>
+                <p className="section-hint">
+                  Chỉ hiển thị phiếu mua chưa gán chuyến hoặc đang thuộc chuyến này.
+                </p>
+              </div>
+            </div>
+
+            <div className="metric-grid compact-metrics">
+              <div className="metric-card">
+                <span>Kg phiếu mua đã gán</span>
+                <strong>{formatNumber(assignedPurchaseWeight)} kg</strong>
+              </div>
+              <div className="metric-card">
+                <span>Kg lên ghe</span>
+                <strong>{formatNumber(watchedLoadedWeight)} kg</strong>
+              </div>
+              <div className="metric-card">
+                <span>Chênh lệch</span>
+                <strong>{formatNumber(assignedWeightDifference)} kg</strong>
+              </div>
+            </div>
+
+            {assignedWeightDifference !== 0 ? (
+              <div className="alert warning-alert">
+                Khối lượng phiếu mua đã gán đang lệch với kg lên ghe. Bạn vẫn có thể lưu chuyến.
+              </div>
+            ) : null}
+
+            {assignablePurchaseItems.length === 0 ? (
+              <div className="state-box">Không có phiếu mua phù hợp để gán.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table extra-wide-table">
+                  <thead>
+                    <tr>
+                      <th>Gán</th>
+                      <th>Đợt mua</th>
+                      <th>Nông dân</th>
+                      <th>Cò lúa</th>
+                      <th>Loại lúa</th>
+                      <th>Kg</th>
+                      <th>Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assignablePurchaseItems.map((item) => {
+                      const checked = item.transport_trip_id === editingItem.id;
+
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={assigningItemId === item.id}
+                              onChange={() => void togglePurchaseItemAssignment(item)}
+                              aria-label={checked ? "Bỏ gán phiếu mua" : "Gán phiếu mua"}
+                            />
+                          </td>
+                          <td>{item.batch?.code || "-"}</td>
+                          <td>{item.farmer?.name || "-"}</td>
+                          <td>{item.broker?.name || "-"}</td>
+                          <td>{item.riceType?.name || "-"}</td>
+                          <td>{formatNumber(item.weight_kg)}</td>
+                          <td>{formatMoney(item.total_amount)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">
