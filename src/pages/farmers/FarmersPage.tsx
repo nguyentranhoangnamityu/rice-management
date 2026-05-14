@@ -437,6 +437,8 @@ function CitizenQrScanner({
   const [uploadScanStatus, setUploadScanStatus] = useState("");
   const [realtimeScanState, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
   const [realtimeScanStatus, setRealtimeScanStatus] = useState("Đang dò QR realtime...");
+  const [qrDistanceLevel, setQrDistanceLevel] = useState<"unknown" | "far" | "good" | "near">("unknown");
+  const [qrDistanceHint, setQrDistanceHint] = useState("📏 Khoảng cách QR: đưa mã vào khung camera.");
 
   function markRealtimeDetected() {
     setRealtimeScanState("detected");
@@ -450,6 +452,19 @@ function CitizenQrScanner({
       setRealtimeScanStatus("Đang dò QR realtime...");
     }, 1800);
   }
+
+  const updateDistanceIndicator = useCallback((decodedResult: unknown) => {
+    const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
+    const estimation = estimateQrDistanceHint(
+      decodedResult,
+      video?.videoWidth ?? 0,
+      video?.videoHeight ?? 0,
+    );
+    if (!estimation) return;
+
+    setQrDistanceLevel(estimation.level);
+    setQrDistanceHint(estimation.message);
+  }, [scannerElementId]);
 
   const clearScannerContainer = useCallback(() => {
     const container = document.getElementById(scannerElementId);
@@ -488,7 +503,9 @@ function CitizenQrScanner({
           disableFlip: false,
           videoConstraints: buildVideoConstraints(selectedCameraId),
         },
-        (decodedText) => {
+        (decodedText, decodedResult) => {
+          updateDistanceIndicator(decodedResult);
+
           const now = Date.now();
           const isDuplicate =
             decodedText === lastScanRef.current.text && now - lastScanRef.current.at < 1200;
@@ -516,7 +533,7 @@ function CitizenQrScanner({
       clearScannerContainer();
       scannerRef.current = null;
     };
-  }, [clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId]);
+  }, [clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId, updateDistanceIndicator]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
@@ -530,6 +547,8 @@ function CitizenQrScanner({
     onError(null);
     setRealtimeScanState("scanning");
     setRealtimeScanStatus("Đang dò QR realtime...");
+    setQrDistanceLevel("unknown");
+    setQrDistanceHint("📏 Khoảng cách QR: đưa mã vào khung camera.");
   }
 
   async function scanUploadedFile(file: File | null) {
@@ -633,11 +652,13 @@ function CitizenQrScanner({
         </div>
       </div>
 
-      <div id={scannerElementId} className="qr-scanner" />
-
-      <div className="calculation-box" aria-live="polite">
-        <span>Trạng thái quét realtime</span>
-        <small>{realtimeScanState === "scanning" ? "🔍 " : "✅ "}{realtimeScanStatus}</small>
+      <div className="scanner-frame">
+        <div id={scannerElementId} className="qr-scanner" />
+        <div className="scanner-center-indicator" aria-live="polite">
+          <span>Trạng thái quét realtime</span>
+          <small>{realtimeScanState === "scanning" ? "🔍 " : "✅ "}{realtimeScanStatus}</small>
+          <small className={`scan-distance-hint ${qrDistanceLevel}`}>{qrDistanceHint}</small>
+        </div>
       </div>
 
       {scannerError ? (
@@ -690,6 +711,64 @@ function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConst
     height: { ideal: 1080 },
     frameRate: { ideal: 30, max: 60 },
   };
+}
+
+function estimateQrDistanceHint(
+  decodedResult: unknown,
+  videoWidth: number,
+  videoHeight: number,
+): { level: "far" | "good" | "near"; message: string } | null {
+  if (videoWidth <= 0 || videoHeight <= 0) return null;
+
+  const points = extractResultPoints(decodedResult);
+  if (points.length < 3) return null;
+
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const qrArea = Math.max(0, maxX - minX) * Math.max(0, maxY - minY);
+  const frameArea = videoWidth * videoHeight;
+  if (frameArea <= 0 || qrArea <= 0) return null;
+
+  const ratio = qrArea / frameArea;
+  if (ratio < 0.03) {
+    return {
+      level: "far",
+      message: "📏 Khoảng cách QR: còn xa, đưa camera gần hơn.",
+    };
+  }
+  if (ratio > 0.35) {
+    return {
+      level: "near",
+      message: "📏 Khoảng cách QR: hơi gần, lùi camera ra một chút.",
+    };
+  }
+
+  return {
+    level: "good",
+    message: "📏 Khoảng cách QR: tốt, giữ ổn định để quét nhanh.",
+  };
+}
+
+function extractResultPoints(decodedResult: unknown): Array<{ x: number; y: number }> {
+  if (!decodedResult || typeof decodedResult !== "object") return [];
+
+  const candidate = decodedResult as {
+    result?: { resultPoints?: unknown[] };
+  };
+  if (!candidate.result?.resultPoints) return [];
+
+  return candidate.result.resultPoints
+    .map((point) => {
+      if (!point || typeof point !== "object") return null;
+      const value = point as { x?: unknown; y?: unknown };
+      const x = typeof value.x === "number" ? value.x : null;
+      const y = typeof value.y === "number" ? value.y : null;
+      if (x === null || y === null) return null;
+      return { x, y };
+    })
+    .filter((point): point is { x: number; y: number } => point !== null);
 }
 
 async function scanFileWithEnhancement(
