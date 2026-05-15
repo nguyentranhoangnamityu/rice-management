@@ -3,6 +3,7 @@ import { Edit2, FileDown, FileText, Plus, Search, Trash2, X } from "lucide-react
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
@@ -80,6 +81,7 @@ export function PurchaseSlipsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<SlipRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     formState: { errors },
@@ -216,11 +218,13 @@ export function PurchaseSlipsPage() {
       payment_status: item.payment_status,
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   function applyBrokerDefaultCommission(brokerId: string) {
@@ -347,10 +351,26 @@ export function PurchaseSlipsPage() {
           <h1>Phiếu mua</h1>
           <p>Ghi nhận từng lần mua lúa theo nông dân, cò lúa, mùa vụ và chuyến ghe nếu có.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm phiếu mua
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell wide onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -513,7 +533,9 @@ export function PurchaseSlipsPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm phiếu mua"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

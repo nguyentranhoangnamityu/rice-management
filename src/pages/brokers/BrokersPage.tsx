@@ -3,6 +3,7 @@ import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -44,6 +45,7 @@ export function BrokersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Broker | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -103,11 +105,13 @@ export function BrokersPage() {
       address: item.address ?? "",
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: BrokerFormValues) {
@@ -171,10 +175,26 @@ export function BrokersPage() {
           <h1>Cò lúa</h1>
           <p>Quản lý người môi giới, giấy tờ, tài khoản ngân hàng và hoa hồng mặc định.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm cò lúa
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -244,7 +264,9 @@ export function BrokersPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm cò lúa"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

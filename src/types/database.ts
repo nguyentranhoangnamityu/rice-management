@@ -209,6 +209,11 @@ export type Database = {
           name: string;
           phone: string | null;
           citizen_id: string | null;
+          gender: string | null;
+          date_of_birth: string | null;
+          permanent_address: string | null;
+          citizen_id_issued_date: string | null;
+          citizen_id_qr_raw_text: string | null;
           bank_name: string | null;
           bank_account_number: string | null;
           bank_account_name: string | null;
@@ -222,6 +227,11 @@ export type Database = {
           name: string;
           phone?: string | null;
           citizen_id?: string | null;
+          gender?: string | null;
+          date_of_birth?: string | null;
+          permanent_address?: string | null;
+          citizen_id_issued_date?: string | null;
+          citizen_id_qr_raw_text?: string | null;
           bank_name?: string | null;
           bank_account_number?: string | null;
           bank_account_name?: string | null;

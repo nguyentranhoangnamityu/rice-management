@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useParams } from "react-router-dom";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
@@ -71,6 +72,7 @@ export function PurchaseBatchDetailPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<PurchaseItemRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -201,11 +203,13 @@ export function PurchaseBatchDetailPage() {
       farmer_payment_status: item.farmer_payment_status,
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: ItemFormValues) {
@@ -318,6 +322,18 @@ export function PurchaseBatchDetailPage() {
             <FileDown size={17} aria-hidden="true" />
             Excel
           </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm phiếu mua
+          </button>
         </div>
       </header>
 
@@ -336,8 +352,10 @@ export function PurchaseBatchDetailPage() {
         </div>
       </div>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell wide onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -462,7 +480,9 @@ export function PurchaseBatchDetailPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm phiếu mua"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           {error ? <div className="alert error-alert">{error}</div> : null}

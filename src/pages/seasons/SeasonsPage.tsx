@@ -3,6 +3,7 @@ import { Edit2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -42,6 +43,7 @@ export function SeasonsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Season | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -89,11 +91,13 @@ export function SeasonsPage() {
       to_date: item.to_date ?? "",
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: SeasonFormValues) {
@@ -152,10 +156,26 @@ export function SeasonsPage() {
           <h1>Mùa vụ</h1>
           <p>Quản lý các mùa vụ để gom đợt mua, bảng giá xử lý và công nợ.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm mùa vụ
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -193,7 +213,9 @@ export function SeasonsPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm mùa vụ"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           {error ? <div className="alert error-alert">{error}</div> : null}

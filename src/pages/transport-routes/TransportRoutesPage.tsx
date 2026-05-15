@@ -3,6 +3,7 @@ import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -42,6 +43,7 @@ export function TransportRoutesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<RouteWithStops | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     control,
@@ -129,11 +131,13 @@ export function TransportRoutesPage() {
             }))
           : [{ location_name: "", note: "" }],
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: RouteFormValues) {
@@ -225,10 +229,26 @@ export function TransportRoutesPage() {
           <h1>Tuyến vận chuyển</h1>
           <p>Quản lý tuyến và các điểm dừng theo thứ tự di chuyển.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm tuyến
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -304,7 +324,9 @@ export function TransportRoutesPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm tuyến"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

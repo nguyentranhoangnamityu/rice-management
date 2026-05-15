@@ -3,6 +3,7 @@ import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -49,6 +50,7 @@ export function FactoriesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Factory | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -108,11 +110,13 @@ export function FactoriesPage() {
       address: item.address ?? "",
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: FactoryFormValues) {
@@ -174,10 +178,26 @@ export function FactoriesPage() {
           <h1>Nhà máy</h1>
           <p>Quản lý nhà máy sấy, xay xát, mã số thuế và tài khoản ngân hàng.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm nhà máy
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -245,7 +265,9 @@ export function FactoriesPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nhà máy"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

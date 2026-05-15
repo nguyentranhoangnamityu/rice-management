@@ -3,6 +3,7 @@ import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -40,6 +41,7 @@ export function TransporterBoatsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TransporterBoat | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -98,11 +100,13 @@ export function TransporterBoatsPage() {
       bank_account_name: item.bank_account_name ?? "",
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: TransporterBoatFormValues) {
@@ -163,67 +167,85 @@ export function TransporterBoatsPage() {
           <h1>Ghe vận chuyển</h1>
           <p>Quản lý ghe, chủ ghe, CCCD và tài khoản ngân hàng cho vận chuyển.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm ghe
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
-          <div className="card-title-row">
-            <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+              <div className="card-title-row">
+                <h2>{formTitle}</h2>
+                {editingItem ? (
+                  <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
+                    <X size={18} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+
+              <label className="field">
+                <span>Tên ghe</span>
+                <input {...register("boat_name")} placeholder="VD: Ghe Ba Tấn" />
+                {errors.boat_name ? <small>{errors.boat_name.message}</small> : null}
+              </label>
+
+              <div className="field-grid">
+                <label className="field">
+                  <span>Chủ ghe</span>
+                  <input {...register("owner_name")} placeholder="Tên chủ ghe" />
+                </label>
+                <label className="field">
+                  <span>Số điện thoại</span>
+                  <input {...register("phone")} inputMode="tel" placeholder="VD: 090..." />
+                </label>
+              </div>
+
+              <label className="field">
+                <span>CCCD</span>
+                <input {...register("citizen_id")} inputMode="numeric" placeholder="Số CCCD" />
+              </label>
+
+              <div className="field-grid">
+                <label className="field">
+                  <span>Ngân hàng</span>
+                  <input {...register("bank_name")} placeholder="VD: Agribank" />
+                </label>
+                <label className="field">
+                  <span>Số tài khoản</span>
+                  <input {...register("bank_account_number")} inputMode="numeric" />
+                </label>
+              </div>
+
+              <label className="field">
+                <span>Tên tài khoản</span>
+                <input {...register("bank_account_name")} placeholder="Tên trên tài khoản ngân hàng" />
+              </label>
+
+              <label className="field">
+                <span>Ghi chú</span>
+                <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
+              </label>
+
+              <button className="primary-button" type="submit" disabled={saving}>
+                <Plus size={18} aria-hidden="true" />
+                {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm ghe"}
               </button>
-            ) : null}
-          </div>
-
-          <label className="field">
-            <span>Tên ghe</span>
-            <input {...register("boat_name")} placeholder="VD: Ghe Ba Tấn" />
-            {errors.boat_name ? <small>{errors.boat_name.message}</small> : null}
-          </label>
-
-          <div className="field-grid">
-            <label className="field">
-              <span>Chủ ghe</span>
-              <input {...register("owner_name")} placeholder="Tên chủ ghe" />
-            </label>
-            <label className="field">
-              <span>Số điện thoại</span>
-              <input {...register("phone")} inputMode="tel" placeholder="VD: 090..." />
-            </label>
-          </div>
-
-          <label className="field">
-            <span>CCCD</span>
-            <input {...register("citizen_id")} inputMode="numeric" placeholder="Số CCCD" />
-          </label>
-
-          <div className="field-grid">
-            <label className="field">
-              <span>Ngân hàng</span>
-              <input {...register("bank_name")} placeholder="VD: Agribank" />
-            </label>
-            <label className="field">
-              <span>Số tài khoản</span>
-              <input {...register("bank_account_number")} inputMode="numeric" />
-            </label>
-          </div>
-
-          <label className="field">
-            <span>Tên tài khoản</span>
-            <input {...register("bank_account_name")} placeholder="Tên trên tài khoản ngân hàng" />
-          </label>
-
-          <label className="field">
-            <span>Ghi chú</span>
-            <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
-          </label>
-
-          <button className="primary-button" type="submit" disabled={saving}>
-            <Plus size={18} aria-hidden="true" />
-            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm ghe"}
-          </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

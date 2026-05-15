@@ -3,6 +3,7 @@ import { Download, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables, TablesInsert } from "../../types/database";
 
@@ -116,6 +117,7 @@ export function AttachmentsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -231,6 +233,12 @@ export function AttachmentsPage() {
     setValue("parent_id", "");
   }, [setValue, watchedParentType]);
 
+  function clearForm() {
+    setSelectedFile(null);
+    reset(emptyValues);
+    setFormOpen(false);
+  }
+
   async function onSubmit(values: FormValues) {
     if (!selectedFile) {
       setError("Vui lòng chọn file cần tải lên.");
@@ -279,8 +287,8 @@ export function AttachmentsPage() {
       await supabase.storage.from(DOCUMENTS_BUCKET).remove([filePath]);
       setError(insertError.message);
     } else {
-      setSelectedFile(null);
-      reset(emptyValues);
+      clearForm();
+      setFormOpen(false);
       await loadData();
     }
 
@@ -340,10 +348,26 @@ export function AttachmentsPage() {
           <h1>Chứng từ</h1>
           <p>Tải lên, mở và quản lý file chứng từ trong Supabase Storage.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              reset(emptyValues);
+              setSelectedFile(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Tải chứng từ
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>Tải chứng từ</h2>
           </div>
@@ -403,7 +427,20 @@ export function AttachmentsPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang tải lên..." : "Tải lên"}
           </button>
-        </form>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => {
+              setSelectedFile(null);
+              reset(emptyValues);
+              setFormOpen(false);
+            }}
+          >
+            Đóng
+          </button>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           {error ? <div className="alert error-alert">{error}</div> : null}

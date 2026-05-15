@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -14,6 +15,11 @@ const farmerSchema = z.object({
   name: z.string().trim().min(1, "Vui lòng nhập tên nông dân"),
   phone: z.string().trim().optional(),
   citizen_id: z.string().trim().optional(),
+  gender: z.string().trim().optional(),
+  date_of_birth: z.string().optional(),
+  permanent_address: z.string().trim().optional(),
+  citizen_id_issued_date: z.string().optional(),
+  citizen_id_qr_raw_text: z.string().trim().optional(),
   bank_name: z.string().trim().optional(),
   bank_account_number: z.string().trim().optional(),
   bank_account_name: z.string().trim().optional(),
@@ -26,7 +32,11 @@ type FarmerFormValues = z.infer<typeof farmerSchema>;
 type ParsedCitizenQr = {
   citizen_id: string;
   name: string;
-  address: string;
+  date_of_birth: string;
+  gender: string;
+  permanent_address: string;
+  citizen_id_issued_date: string;
+  citizen_id_qr_raw_text: string;
   strategy: string;
   confidence: "high" | "medium" | "low";
   tokens: string[];
@@ -37,6 +47,11 @@ const emptyValues: FarmerFormValues = {
   name: "",
   phone: "",
   citizen_id: "",
+  gender: "",
+  date_of_birth: "",
+  permanent_address: "",
+  citizen_id_issued_date: "",
+  citizen_id_qr_raw_text: "",
   bank_name: "",
   bank_account_number: "",
   bank_account_name: "",
@@ -56,6 +71,7 @@ export function FarmersPage() {
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scanRawText, setScanRawText] = useState("");
   const [parsedCitizenQr, setParsedCitizenQr] = useState<ParsedCitizenQr | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -110,17 +126,29 @@ export function FarmersPage() {
       name: item.name,
       phone: item.phone ?? "",
       citizen_id: item.citizen_id ?? "",
+      gender: item.gender ?? "",
+      date_of_birth: item.date_of_birth ?? "",
+      permanent_address: item.permanent_address ?? "",
+      citizen_id_issued_date: item.citizen_id_issued_date ?? "",
+      citizen_id_qr_raw_text: item.citizen_id_qr_raw_text ?? "",
       bank_name: item.bank_name ?? "",
       bank_account_number: item.bank_account_number ?? "",
       bank_account_name: item.bank_account_name ?? "",
       address: item.address ?? "",
       note: item.note ?? "",
     });
+    setScanRawText(item.citizen_id_qr_raw_text ?? "");
+    setParsedCitizenQr(null);
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setScannerOpen(false);
+    setScanRawText("");
+    setParsedCitizenQr(null);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: FarmerFormValues) {
@@ -131,6 +159,11 @@ export function FarmersPage() {
       name: values.name,
       phone: toNullable(values.phone),
       citizen_id: toNullable(values.citizen_id),
+      gender: toNullable(values.gender),
+      date_of_birth: toNullable(values.date_of_birth),
+      permanent_address: toNullable(values.permanent_address),
+      citizen_id_issued_date: toNullable(values.citizen_id_issued_date),
+      citizen_id_qr_raw_text: toNullable(values.citizen_id_qr_raw_text),
       bank_name: toNullable(values.bank_name),
       bank_account_number: toNullable(values.bank_account_number),
       bank_account_name: toNullable(values.bank_account_name),
@@ -181,17 +214,27 @@ export function FarmersPage() {
 
     setScanRawText(rawText);
     setParsedCitizenQr(parsed);
+    setValue("citizen_id_qr_raw_text", rawText, { shouldDirty: true, shouldValidate: true });
     if (parsed.citizen_id) {
       setValue("citizen_id", parsed.citizen_id, { shouldDirty: true, shouldValidate: true });
     }
     if (parsed.name) {
       setValue("name", parsed.name, { shouldDirty: true, shouldValidate: true });
     }
-    if (parsed.address) {
-      setValue("address", parsed.address, { shouldDirty: true, shouldValidate: true });
+    if (parsed.date_of_birth) {
+      setValue("date_of_birth", parsed.date_of_birth, { shouldDirty: true, shouldValidate: true });
+    }
+    if (parsed.gender) {
+      setValue("gender", parsed.gender, { shouldDirty: true, shouldValidate: true });
+    }
+    if (parsed.permanent_address) {
+      setValue("permanent_address", parsed.permanent_address, { shouldDirty: true, shouldValidate: true });
+    }
+    if (parsed.citizen_id_issued_date) {
+      setValue("citizen_id_issued_date", parsed.citizen_id_issued_date, { shouldDirty: true, shouldValidate: true });
     }
 
-    if (!parsed.citizen_id && !parsed.name && !parsed.address) {
+    if (!parsed.citizen_id && !parsed.name && !parsed.permanent_address) {
       setScannerError("Đã quét QR nhưng chưa nhận diện được thông tin CCCD. Vui lòng nhập tay.");
     } else {
       setScannerError(null);
@@ -212,10 +255,28 @@ export function FarmersPage() {
           <h1>Nông dân</h1>
           <p>Quản lý thông tin người bán lúa, CCCD, tài khoản ngân hàng và liên hệ.</p>
         </div>
+        <div className="header-actions">
+          <Button
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setScanRawText("");
+              setParsedCitizenQr(null);
+              setScannerOpen(false);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm nông dân
+          </Button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell wide onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             <div className="row-actions">
@@ -272,9 +333,36 @@ export function FarmersPage() {
             </label>
           </div>
 
+          <div className="field-grid">
+            <label className="field">
+              <span>Giới tính</span>
+              <input {...register("gender")} placeholder="Nam / Nữ" />
+            </label>
+            <label className="field">
+              <span>Ngày sinh</span>
+              <input type="date" {...register("date_of_birth")} />
+            </label>
+          </div>
+
+          <div className="field-grid">
+            <label className="field">
+              <span>Ngày cấp CCCD</span>
+              <input type="date" {...register("citizen_id_issued_date")} />
+            </label>
+            <label className="field">
+              <span>Địa chỉ thường trú</span>
+              <input {...register("permanent_address")} placeholder="Theo CCCD" />
+            </label>
+          </div>
+
           <label className="field">
-            <span>Địa chỉ</span>
+            <span>Địa chỉ liên hệ / ghi chú địa chỉ</span>
             <input {...register("address")} placeholder="Ấp, xã, huyện..." />
+          </label>
+
+          <label className="field">
+            <span>Raw QR CCCD</span>
+            <textarea {...register("citizen_id_qr_raw_text")} rows={3} placeholder="Dữ liệu QR sau khi quét" />
           </label>
 
           <div className="field-grid">
@@ -302,7 +390,9 @@ export function FarmersPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nông dân"}
           </Button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">
@@ -333,6 +423,9 @@ export function FarmersPage() {
                     </div>
 
                     <div className="farmer-mobile-details">
+                      <small>Ngày sinh: {formatDateValue(item.date_of_birth)}</small>
+                      <small>Giới tính: {item.gender || "-"}</small>
+                      <small>Thường trú: {item.permanent_address || "-"}</small>
                       <small>Điện thoại: {item.phone || "-"}</small>
                       <small>Ngân hàng: {item.bank_name || "-"}</small>
                       <small>Số TK: {item.bank_account_number || "-"}</small>
@@ -365,6 +458,9 @@ export function FarmersPage() {
                       <th>Tên</th>
                       <th>Điện thoại</th>
                       <th>CCCD</th>
+                      <th>Ngày sinh</th>
+                      <th>Giới tính</th>
+                      <th>Thường trú</th>
                       <th>Ngân hàng</th>
                       <th>Tài khoản</th>
                       <th aria-label="Thao tác" />
@@ -376,6 +472,9 @@ export function FarmersPage() {
                         <td>{item.name}</td>
                         <td>{item.phone || "-"}</td>
                         <td>{item.citizen_id || "-"}</td>
+                        <td>{formatDateValue(item.date_of_birth)}</td>
+                        <td>{item.gender || "-"}</td>
+                        <td>{item.permanent_address || "-"}</td>
                         <td>{item.bank_name || "-"}</td>
                         <td>
                           <div>{item.bank_account_number || "-"}</div>
@@ -436,11 +535,11 @@ function CitizenQrScanner({
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [uploadScanStatus, setUploadScanStatus] = useState("");
-  const [realtimeScanState, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
+  const [, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
   const [realtimeScanStatus, setRealtimeScanStatus] = useState("Đang dò QR realtime...");
   const [scanProgressPercent, setScanProgressPercent] = useState(0);
   const [qrDistanceLevel, setQrDistanceLevel] = useState<"unknown" | "far" | "good" | "near">("unknown");
-  const [qrDistanceHint, setQrDistanceHint] = useState("📏 Khoảng cách QR: đưa mã vào khung camera.");
+  const [qrDistanceHint, setQrDistanceHint] = useState("Khoảng cách QR: đưa mã vào khung camera.");
 
   function markRealtimeDetected() {
     setRealtimeScanState("detected");
@@ -553,7 +652,7 @@ function CitizenQrScanner({
     setRealtimeScanStatus("Đang dò QR realtime...");
     setScanProgressPercent(0);
     setQrDistanceLevel("unknown");
-    setQrDistanceHint("📏 Khoảng cách QR: đưa mã vào khung camera.");
+    setQrDistanceHint("Khoảng cách QR: đưa mã vào khung camera.");
   }
 
   async function scanUploadedFile(file: File | null) {
@@ -678,7 +777,7 @@ function CitizenQrScanner({
         <div className="scan-progress-track">
           <span style={{ width: `${scanProgressPercent}%` }} />
         </div>
-        <small>{realtimeScanState === "scanning" ? "🔍 " : "✅ "}{realtimeScanStatus}</small>
+        <small>{realtimeScanStatus}</small>
         <small className={`scan-distance-hint ${qrDistanceLevel}`}>{qrDistanceHint}</small>
       </div>
 
@@ -756,19 +855,19 @@ function estimateQrDistanceHint(
   if (ratio < 0.03) {
     return {
       level: "far",
-      message: "📏 Khoảng cách QR: còn xa, đưa camera gần hơn.",
+      message: "Khoảng cách QR: còn xa, đưa camera gần hơn.",
     };
   }
   if (ratio > 0.35) {
     return {
       level: "near",
-      message: "📏 Khoảng cách QR: hơi gần, lùi camera ra một chút.",
+      message: "Khoảng cách QR: hơi gần, lùi camera ra một chút.",
     };
   }
 
   return {
     level: "good",
-    message: "📏 Khoảng cách QR: tốt, giữ ổn định để quét nhanh.",
+    message: "Khoảng cách QR: tốt, giữ ổn định để quét nhanh.",
   };
 }
 
@@ -936,7 +1035,10 @@ function ParserDebug({ parsed }: { parsed: ParsedCitizenQr }) {
       <small>Độ tin cậy: {parsed.confidence}</small>
       <small>CCCD: {parsed.citizen_id || "-"}</small>
       <small>Họ tên: {parsed.name || "-"}</small>
-      <small>Địa chỉ: {parsed.address || "-"}</small>
+      <small>Ngày sinh: {formatDateValue(parsed.date_of_birth)}</small>
+      <small>Giới tính: {parsed.gender || "-"}</small>
+      <small>Thường trú: {parsed.permanent_address || "-"}</small>
+      <small>Ngày cấp: {formatDateValue(parsed.citizen_id_issued_date)}</small>
       {parsed.warnings.length > 0 ? <small>Cảnh báo: {parsed.warnings.join("; ")}</small> : null}
       <small>Tokens: {parsed.tokens.length > 0 ? parsed.tokens.join(" | ") : "-"}</small>
     </div>
@@ -968,16 +1070,23 @@ function parseCitizenQr(rawText: string): ParsedCitizenQr {
       findCitizenId(jsonValues) ||
       normalizeCitizenId(readString(parsedJson, ["citizen_id", "id", "cccd", "so_cccd"]));
     const name = cleanName(readString(parsedJson, ["name", "full_name", "ho_ten"]));
-    const address = readString(parsedJson, ["address", "dia_chi", "permanent_address"]);
+    const dateOfBirth = normalizeDateValue(readString(parsedJson, ["date_of_birth", "dob", "birth_date", "ngay_sinh"]));
+    const gender = normalizeGender(readString(parsedJson, ["gender", "sex", "gioi_tinh"]));
+    const permanentAddress = readString(parsedJson, ["permanent_address", "address", "dia_chi", "thuong_tru"]);
+    const issuedDate = normalizeDateValue(readString(parsedJson, ["citizen_id_issued_date", "issued_date", "issue_date", "ngay_cap"]));
 
     if (!citizenId) warnings.push("Không tìm thấy CCCD 12 số trong JSON.");
     if (!name) warnings.push("Không tìm thấy họ tên rõ ràng trong JSON.");
-    if (!address) warnings.push("Không tìm thấy địa chỉ trong JSON.");
+    if (!permanentAddress) warnings.push("Không tìm thấy địa chỉ trong JSON.");
 
     return {
       citizen_id: citizenId,
       name,
-      address,
+      date_of_birth: dateOfBirth,
+      gender,
+      permanent_address: permanentAddress,
+      citizen_id_issued_date: issuedDate,
+      citizen_id_qr_raw_text: rawText,
       strategy: "json",
       confidence: citizenId && name ? "high" : "medium",
       tokens: jsonValues,
@@ -993,18 +1102,25 @@ function parseCitizenQr(rawText: string): ParsedCitizenQr {
     .filter(Boolean);
   const citizenId = findCitizenId(tokens);
   const name = findLikelyName(tokens, citizenId);
-  const address = findLikelyAddress(tokens);
+  const dateOfBirth = findDateByContext(tokens, ["ngày sinh", "date of birth", "dob"]) || findLikelyDelimitedDate(tokens, 0);
+  const gender = findLikelyGender(tokens);
+  const permanentAddress = findLikelyAddress(tokens);
+  const issuedDate = findDateByContext(tokens, ["ngày cấp", "issued", "issue"]) || findLikelyDelimitedDate(tokens, 1);
 
   if (!citizenId) warnings.push("Không tìm thấy CCCD 12 số.");
   if (!name) warnings.push("Không nhận diện chắc chắn họ tên.");
-  if (!address) warnings.push("Không nhận diện được địa chỉ.");
+  if (!permanentAddress) warnings.push("Không nhận diện được địa chỉ.");
 
   return {
     citizen_id: citizenId,
     name,
-    address,
+    date_of_birth: dateOfBirth,
+    gender,
+    permanent_address: permanentAddress,
+    citizen_id_issued_date: issuedDate,
+    citizen_id_qr_raw_text: rawText,
     strategy: "delimited-heuristic",
-    confidence: citizenId && name && address ? "high" : citizenId && (name || address) ? "medium" : "low",
+    confidence: citizenId && name && permanentAddress ? "high" : citizenId && (name || permanentAddress) ? "medium" : "low",
     tokens,
     warnings,
   };
@@ -1047,6 +1163,70 @@ function findLikelyAddress(tokens: string[]) {
     .sort((a, b) => b.length - a.length)[0] ?? "";
 }
 
+function findLikelyGender(tokens: string[]) {
+  for (const token of tokens) {
+    const normalized = removeVietnameseMarks(token).toLowerCase().trim();
+    if (normalized === "nam" || normalized.includes("gioi tinh nam") || normalized.includes("male")) {
+      return "Nam";
+    }
+    if (
+      normalized === "nu" ||
+      normalized.includes("gioi tinh nu") ||
+      normalized.includes("female")
+    ) {
+      return "Nữ";
+    }
+  }
+
+  return "";
+}
+
+function normalizeGender(value: string) {
+  if (!value) return "";
+  return findLikelyGender([value]);
+}
+
+function findLikelyDelimitedDate(tokens: string[], occurrence: number) {
+  const dates = tokens
+    .map((token) => normalizeDateValue(token))
+    .filter(Boolean);
+
+  return dates[occurrence] ?? "";
+}
+
+function findDateByContext(tokens: string[], labels: string[]) {
+  const normalizedLabels = labels.map((label) => removeVietnameseMarks(label).toLowerCase());
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const normalized = removeVietnameseMarks(tokens[index]).toLowerCase();
+    if (!normalizedLabels.some((label) => normalized.includes(label))) continue;
+
+    const sameTokenDate = normalizeDateValue(tokens[index]);
+    if (sameTokenDate) return sameTokenDate;
+
+    const nextTokenDate = normalizeDateValue(tokens[index + 1] ?? "");
+    if (nextTokenDate) return nextTokenDate;
+  }
+
+  return "";
+}
+
+function normalizeDateValue(value: string) {
+  const trimmed = value.trim();
+  const compactMatch = trimmed.match(/\b(\d{2})(\d{2})(\d{4})\b/);
+  if (compactMatch) {
+    return `${compactMatch[3]}-${compactMatch[2]}-${compactMatch[1]}`;
+  }
+
+  const separatedMatch = trimmed.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b/);
+  if (separatedMatch) {
+    return `${separatedMatch[3]}-${separatedMatch[2].padStart(2, "0")}-${separatedMatch[1].padStart(2, "0")}`;
+  }
+
+  const isoMatch = trimmed.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  return isoMatch ? isoMatch[0] : "";
+}
+
 function looksLikeAddress(value: string) {
   const normalized = value.toLowerCase();
   return [
@@ -1065,6 +1245,14 @@ function looksLikeAddress(value: string) {
 
 function cleanName(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function removeVietnameseMarks(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
 }
 
 function flattenJsonValues(source: unknown): string[] {
@@ -1100,6 +1288,11 @@ function formatErrorMessage(error: unknown) {
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
+}
+
+function formatDateValue(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short" }).format(new Date(value));
 }
 
 function toNullable(value: string | undefined) {

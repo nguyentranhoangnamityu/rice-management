@@ -3,6 +3,7 @@ import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
@@ -75,6 +76,7 @@ export function ProcessingRecordsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<ProcessingRecordRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -196,11 +198,13 @@ export function ProcessingRecordsPage() {
       processed_date: item.processed_date,
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: RecordFormValues) {
@@ -293,10 +297,26 @@ export function ProcessingRecordsPage() {
           <h1>Sấy xay xát</h1>
           <p>Ghi nhận xử lý theo chuyến ghe, nhà máy, đầu vào, đầu ra và hao hụt.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm phiếu xử lý
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell wide onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -431,7 +451,9 @@ export function ProcessingRecordsPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm phiếu xử lý"}
           </button>
-        </form>
+            </form>
+          </ModalShell>
+        ) : null}
 
         <div className="table-card">
           <div className="table-toolbar">

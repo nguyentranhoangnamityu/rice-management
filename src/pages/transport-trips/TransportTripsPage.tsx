@@ -3,6 +3,7 @@ import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ModalShell } from "../../components/ui/ModalShell";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
@@ -105,6 +106,7 @@ export function TransportTripsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TripRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
   const {
     register,
@@ -305,11 +307,13 @@ export function TransportTripsPage() {
       payment_status: item.payment_status,
       note: item.note ?? "",
     });
+    setFormOpen(true);
   }
 
   function clearForm() {
     setEditingItem(null);
     reset(emptyValues);
+    setFormOpen(false);
   }
 
   async function onSubmit(values: TripFormValues) {
@@ -433,10 +437,26 @@ export function TransportTripsPage() {
           <h1>Chuyến ghe</h1>
           <p>Theo dõi vận chuyển, hao hụt, chi phí và công nợ ghe theo mùa vụ.</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              setEditingItem(null);
+              reset(emptyValues);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={18} aria-hidden="true" />
+            Thêm chuyến ghe
+          </button>
+        </div>
       </header>
 
-      <div className="crud-grid">
-        <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
+      <div className="crud-grid modal-crud-grid">
+        {formOpen ? (
+          <ModalShell wide onClose={clearForm}>
+            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             {editingItem ? (
@@ -616,9 +636,9 @@ export function TransportTripsPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm chuyến"}
           </button>
-        </form>
+            </form>
 
-        {editingItem ? (
+            {editingItem ? (
           <div className="table-card assignment-panel">
             <div className="card-title-row">
               <div>
@@ -696,7 +716,9 @@ export function TransportTripsPage() {
                 </table>
               </div>
             )}
-          </div>
+              </div>
+            ) : null}
+          </ModalShell>
         ) : null}
 
         <div className="table-card">
