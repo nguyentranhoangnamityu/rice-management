@@ -615,7 +615,7 @@ export function PurchaseSlipsPage() {
                     <th>Ngày</th>
                     <th>Nông dân</th>
                     <th>Cò lúa</th>
-                    <th>Mùa vụ</th>
+                    <th>Chuyến ghe</th>
                     <th>Loại lúa</th>
                     <th>Kg</th>
                     <th>Thành tiền</th>
@@ -635,12 +635,16 @@ export function PurchaseSlipsPage() {
                           <span className="muted-text">Nhận UQ: {item.authorizedReceiverBroker.name}</span>
                         ) : null}
                       </td>
-                      <td>{item.season?.name || "-"}</td>
+                      <td>{item.transportTrip?.code || "-"}</td>
                       <td>{item.riceType?.name || "-"}</td>
                       <td>{formatNumber(item.weight_kg)}</td>
                       <td>{formatMoney(item.total_amount)}</td>
                       <td>{formatMoney(item.broker_commission_total)}</td>
-                      <td>{formatPaymentStatus(item.payment_status)}</td>
+                      <td className="payment-status-cell">
+                        <span className={`payment-status-chip ${getPaymentStatusClass(item.payment_status)}`}>
+                          {formatPaymentStatus(item.payment_status)}
+                        </span>
+                      </td>
                       <td>
                         <div className="actions-menu-wrap">
                           <button
@@ -885,6 +889,12 @@ function formatPaymentStatus(value: PaymentStatus) {
   return paymentStatusOptions.find((option) => option.value === value)?.label ?? value;
 }
 
+function getPaymentStatusClass(value: PaymentStatus) {
+  if (value === "paid") return "paid";
+  if (value === "partial") return "partial";
+  return "unpaid";
+}
+
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
@@ -917,6 +927,7 @@ function formatMoney(value: number) {
 }
 
 function buildContractTemplateData(item: SlipRow) {
+  const purchaseDateParts = getDateParts(item.purchase_date);
   const farmerDateOfBirth = formatDateOrFillLine(item.farmer?.date_of_birth);
   const farmerIssuedDate = formatDateOrFillLine(item.farmer?.citizen_id_issued_date);
   const farmerIssuedPlace = fillLine();
@@ -947,6 +958,15 @@ function buildContractTemplateData(item: SlipRow) {
     total_amount: formatMoney(item.total_amount),
     total_amount_words: moneyToVietnameseWords(item.total_amount),
     purchase_date: formatDateOrEmpty(item.purchase_date),
+    purchase_day: purchaseDateParts.day,
+    purchase_month: purchaseDateParts.month,
+    purchase_year: purchaseDateParts.year,
+    contract_day: purchaseDateParts.day,
+    contract_month: purchaseDateParts.month,
+    contract_year: purchaseDateParts.year,
+    day: purchaseDateParts.day,
+    month: purchaseDateParts.month,
+    year: purchaseDateParts.year,
     broker_name: toText(item.broker?.name),
     note: toTextOrFillLine(item.note),
     transport_trip_code: toText(item.transportTrip?.code),
@@ -1034,4 +1054,21 @@ function buildContractFileName(item: SlipRow) {
     .trim();
 
   return `${sanitizedName || fallbackName}.docx`;
+}
+
+function getDateParts(value: string | null | undefined) {
+  if (!value) {
+    return {
+      day: fillLine(),
+      month: fillLine(),
+      year: fillLine(),
+    };
+  }
+
+  const [year = "", month = "", day = ""] = value.split("-");
+  return {
+    day: day || fillLine(),
+    month: month || fillLine(),
+    year: year || fillLine(),
+  };
 }

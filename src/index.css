@@ -901,6 +901,42 @@ a {
   font-size: 13px;
 }
 
+.payment-status-cell {
+  text-align: center !important;
+}
+
+.payment-status-chip {
+  display: inline-flex;
+  min-width: 112px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.payment-status-chip.unpaid {
+  border-color: #f2aaa3;
+  background: #fff5f3;
+  color: #9f2419;
+}
+
+.payment-status-chip.partial {
+  border-color: #f6d58d;
+  background: #fff9e8;
+  color: #7a4b00;
+}
+
+.payment-status-chip.paid {
+  border-color: #b4dfbc;
+  background: #ebf7ee;
+  color: #1f6d3a;
+}
+
 .back-link {
   display: inline-flex;
   align-items: center;
