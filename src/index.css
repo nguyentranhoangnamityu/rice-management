@@ -396,6 +396,72 @@ a {
   font-size: 13px;
 }
 
+.searchable-combobox {
+  position: relative;
+  display: grid;
+}
+
+.combobox-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.combobox-control input {
+  padding-right: 42px;
+}
+
+.combobox-control button {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: #eef3ed;
+  color: #264431;
+  cursor: pointer;
+}
+
+.combobox-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(23, 33, 27, 0.12);
+}
+
+.combobox-menu button {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: #1f2c24;
+  cursor: pointer;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.combobox-menu button:hover,
+.combobox-menu button.selected {
+  background: #eef3ed;
+}
+
+.combobox-menu span {
+  padding: 12px;
+  color: #66746b;
+  font-size: 13px;
+}
+
 .primary-button,
 .icon-button {
   display: inline-flex;
@@ -536,6 +602,63 @@ a {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.compact-action-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.actions-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.actions-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 160px;
+  overflow: hidden;
+  border: 1px solid #dfe4dc;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(23, 33, 27, 0.12);
+}
+
+.floating-actions-menu {
+  position: fixed;
+  right: auto;
+}
+
+.actions-menu button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #1f2c24;
+  cursor: pointer;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.actions-menu button:hover {
+  background: #eef3ed;
+}
+
+.actions-menu button.danger {
+  color: #b42318;
+}
+
+.actions-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .scanner-action-group {

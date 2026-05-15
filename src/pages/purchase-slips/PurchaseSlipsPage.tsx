@@ -1,10 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, FileDown, FileText, Plus, Search, Trash2, X } from "lucide-react";
+import Docxtemplater from "docxtemplater";
+import { saveAs } from "file-saver";
+import { Edit2, FileText, Plus, Search, Trash2, X } from "lucide-react";
+import PizZip from "pizzip";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
-import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -79,9 +82,11 @@ export function PurchaseSlipsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [generatingContractId, setGeneratingContractId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<SlipRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [actionMenu, setActionMenu] = useState<{ id: string; top: number; left: number } | null>(null);
 
   const {
     formState: { errors },
@@ -98,8 +103,80 @@ export function PurchaseSlipsPage() {
   const watchedWeight = watch("weight_kg");
   const watchedUnitPrice = watch("unit_price");
   const watchedCommission = watch("broker_commission_per_kg");
+  const selectedSeasonId = watch("season_id");
+  const selectedFarmerId = watch("farmer_id");
+  const selectedBrokerId = watch("broker_id");
+  const selectedTransportTripId = watch("transport_trip_id");
+  const selectedRiceTypeId = watch("rice_type_id");
+  const selectedAuthorizationLetterId = watch("authorization_letter_id");
+  const selectedAuthorizedReceiverBrokerId = watch("authorized_receiver_broker_id");
   const totalAmount = round2((watchedWeight || 0) * (watchedUnitPrice || 0));
   const brokerCommissionTotal = round2((watchedWeight || 0) * (watchedCommission || 0));
+
+  const seasonOptions = useMemo(
+    () => seasons.map((season) => ({ value: season.id, label: season.name })),
+    [seasons],
+  );
+  const farmerOptions = useMemo(
+    () =>
+      farmers.map((farmer) => ({
+        value: farmer.id,
+        label: farmer.citizen_id ? `${farmer.name} - CCCD: ${farmer.citizen_id}` : farmer.name,
+      })),
+    [farmers],
+  );
+  const brokerOptions = useMemo(
+    () => brokers.map((broker) => ({ value: broker.id, label: broker.name })),
+    [brokers],
+  );
+  const transportTripOptions = useMemo(
+    () =>
+      transportTrips.map((trip) => ({
+        value: trip.id,
+        label: `${trip.code} - ${formatDate(trip.trip_date)}`,
+      })),
+    [transportTrips],
+  );
+  const riceTypeOptions = useMemo(
+    () => riceTypes.map((riceType) => ({ value: riceType.id, label: riceType.name })),
+    [riceTypes],
+  );
+  const authorizationLetterOptions = useMemo(
+    () =>
+      authorizationLetters.map((letter) => ({
+        value: letter.id,
+        label: formatAuthorizationLetter(letter, farmers, brokers),
+      })),
+    [authorizationLetters, farmers, brokers],
+  );
+
+  useEffect(() => {
+    if (!actionMenu) return;
+
+    function closeMenu() {
+      setActionMenu(null);
+    }
+
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [actionMenu]);
+
+  function openActionMenu(itemId: string, element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
+    const menuWidth = 176;
+    const menuHeight = 132;
+    const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
+    const preferredTop = rect.bottom + 6;
+    const top = preferredTop + menuHeight > window.innerHeight
+      ? Math.max(8, rect.top - menuHeight - 6)
+      : preferredTop;
+
+    setActionMenu({ id: itemId, top, left });
+  }
 
   const filteredItems = useMemo(() => {
     const keyword = normalize(search);
@@ -293,55 +370,32 @@ export function PurchaseSlipsPage() {
     setDeletingId(null);
   }
 
-  function generateAuthorizationLetter(item: SlipRow) {
-    if (!item.authorizedReceiverBroker) return;
+  async function generateContractDocx(item: SlipRow) {
+    setGeneratingContractId(item.id);
+    setError(null);
 
-    exportPdf({
-      title: "Giay uy quyen nhan tien mua lua",
-      fileName: `authorization-letter-${item.purchase_date}-${item.id.slice(0, 8)}.pdf`,
-      details: [
-        `Ngay mua: ${formatDate(item.purchase_date)}`,
-        "Noi dung: Nong dan uy quyen cho nguoi nhan tien theo phieu mua lua.",
-      ],
-      tables: [
-        {
-          title: "Thong tin uy quyen",
-          headers: ["Noi dung", "Gia tri"],
-          rows: [
-            ["Nong dan", item.farmer?.name ?? "-"],
-            ["CCCD nong dan", item.farmer?.citizen_id ?? "-"],
-            ["Dia chi nong dan", item.farmer?.address ?? "-"],
-            ["Nguoi nhan uy quyen", item.authorizedReceiverBroker.name],
-            ["CCCD nguoi nhan", item.authorizedReceiverBroker.citizen_id ?? "-"],
-            ["Ngay mua", formatDate(item.purchase_date)],
-            ["Loai lua", item.riceType?.name ?? "-"],
-            ["Khoi luong", `${formatNumber(item.weight_kg)} kg`],
-            ["Thanh tien", formatMoney(item.total_amount)],
-            ["Ghi chu", item.note ?? "-"],
-          ],
-        },
-        {
-          title: "Chu ky",
-          headers: ["Ben uy quyen", "Nguoi nhan uy quyen", "Nguoi lap phieu"],
-          rows: [["Ky va ghi ro ho ten", "Ky va ghi ro ho ten", "Ky va ghi ro ho ten"]],
-        },
-      ],
-    });
-  }
+    try {
+      const response = await fetch("/templates/purchase-contract-template.docx");
+      if (!response.ok) {
+        throw new Error("Không tìm thấy file mẫu hợp đồng tại /templates/purchase-contract-template.docx.");
+      }
 
-  function exportSlipPdf(item: SlipRow) {
-    exportPdf({
-      title: `Purchase slip ${formatDate(item.purchase_date)}`,
-      fileName: `purchase-slip-${item.purchase_date}-${item.id.slice(0, 8)}.pdf`,
-      tables: [buildSlipExportTable(item)],
-    });
-  }
+      const templateBuffer = await response.arrayBuffer();
+      const doc = buildContractDoc(templateBuffer);
 
-  function exportSlipExcel(item: SlipRow) {
-    exportExcel({
-      fileName: `purchase-slip-${item.purchase_date}-${item.id.slice(0, 8)}.xlsx`,
-      sheets: [buildSlipExportTable(item)],
-    });
+      doc.render(buildContractTemplateData(item));
+
+      const blob = doc.getZip().generate({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      saveAs(blob, buildContractFileName(item));
+    } catch (currentError) {
+      const message = formatContractTemplateError(currentError);
+      setError(message);
+    } finally {
+      setGeneratingContractId(null);
+    }
   }
 
   return (
@@ -388,14 +442,13 @@ export function PurchaseSlipsPage() {
             </label>
             <label className="field">
               <span>Mùa vụ</span>
-              <select {...register("season_id")}>
-                <option value="">Chọn mùa vụ</option>
-                {seasons.map((season) => (
-                  <option key={season.id} value={season.id}>
-                    {season.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedSeasonId}
+                onChange={(value) => setValue("season_id", value, { shouldDirty: true, shouldValidate: true })}
+                options={seasonOptions}
+                placeholder="Tìm mùa vụ"
+                emptyLabel="Chọn mùa vụ"
+              />
               {errors.season_id ? <small>{errors.season_id.message}</small> : null}
             </label>
           </div>
@@ -403,30 +456,27 @@ export function PurchaseSlipsPage() {
           <div className="field-grid">
             <label className="field">
               <span>Nông dân</span>
-              <select {...register("farmer_id")}>
-                <option value="">Chọn nông dân</option>
-                {farmers.map((farmer) => (
-                  <option key={farmer.id} value={farmer.id}>
-                    {farmer.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedFarmerId}
+                onChange={(value) => setValue("farmer_id", value, { shouldDirty: true, shouldValidate: true })}
+                options={farmerOptions}
+                placeholder="Tìm nông dân"
+                emptyLabel="Chọn nông dân"
+              />
               {errors.farmer_id ? <small>{errors.farmer_id.message}</small> : null}
             </label>
             <label className="field">
               <span>Cò lúa</span>
-              <select
-                {...register("broker_id", {
-                  onChange: (event) => applyBrokerDefaultCommission(event.target.value),
-                })}
-              >
-                <option value="">Chọn cò lúa</option>
-                {brokers.map((broker) => (
-                  <option key={broker.id} value={broker.id}>
-                    {broker.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedBrokerId}
+                onChange={(value) => {
+                  setValue("broker_id", value, { shouldDirty: true, shouldValidate: true });
+                  applyBrokerDefaultCommission(value);
+                }}
+                options={brokerOptions}
+                placeholder="Tìm cò lúa"
+                emptyLabel="Chọn cò lúa"
+              />
               {errors.broker_id ? <small>{errors.broker_id.message}</small> : null}
             </label>
           </div>
@@ -434,51 +484,53 @@ export function PurchaseSlipsPage() {
           <div className="field-grid">
             <label className="field">
               <span>Loại lúa</span>
-              <select {...register("rice_type_id")}>
-                <option value="">Chọn loại lúa</option>
-                {riceTypes.map((riceType) => (
-                  <option key={riceType.id} value={riceType.id}>
-                    {riceType.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedRiceTypeId}
+                onChange={(value) => setValue("rice_type_id", value, { shouldDirty: true, shouldValidate: true })}
+                options={riceTypeOptions}
+                placeholder="Tìm loại lúa"
+                emptyLabel="Chọn loại lúa"
+              />
               {errors.rice_type_id ? <small>{errors.rice_type_id.message}</small> : null}
             </label>
             <label className="field">
               <span>Chuyến ghe</span>
-              <select {...register("transport_trip_id")}>
-                <option value="">Không chọn</option>
-                {transportTrips.map((trip) => (
-                  <option key={trip.id} value={trip.id}>
-                    {trip.code} - {formatDate(trip.trip_date)}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selectedTransportTripId}
+                onChange={(value) =>
+                  setValue("transport_trip_id", value, { shouldDirty: true, shouldValidate: true })
+                }
+                options={transportTripOptions}
+                placeholder="Tìm chuyến ghe"
+                emptyLabel="Không chọn"
+              />
             </label>
           </div>
 
           <label className="field">
             <span>Giấy ủy quyền</span>
-            <select {...register("authorization_letter_id")}>
-              <option value="">Không chọn</option>
-              {authorizationLetters.map((letter) => (
-                <option key={letter.id} value={letter.id}>
-                  {formatAuthorizationLetter(letter, farmers, brokers)}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={selectedAuthorizationLetterId}
+              onChange={(value) =>
+                setValue("authorization_letter_id", value, { shouldDirty: true, shouldValidate: true })
+              }
+              options={authorizationLetterOptions}
+              placeholder="Tìm giấy ủy quyền"
+              emptyLabel="Không chọn"
+            />
           </label>
 
           <label className="field">
             <span>Cò nhận ủy quyền</span>
-            <select {...register("authorized_receiver_broker_id")}>
-              <option value="">Không chọn</option>
-              {brokers.map((broker) => (
-                <option key={broker.id} value={broker.id}>
-                  {broker.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={selectedAuthorizedReceiverBrokerId}
+              onChange={(value) =>
+                setValue("authorized_receiver_broker_id", value, { shouldDirty: true, shouldValidate: true })
+              }
+              options={brokerOptions}
+              placeholder="Tìm cò nhận ủy quyền"
+              emptyLabel="Không chọn"
+            />
           </label>
 
           <div className="field-grid">
@@ -590,51 +642,67 @@ export function PurchaseSlipsPage() {
                       <td>{formatMoney(item.broker_commission_total)}</td>
                       <td>{formatPaymentStatus(item.payment_status)}</td>
                       <td>
-                        <div className="row-actions">
+                        <div className="actions-menu-wrap">
                           <button
-                            className="icon-button"
+                            className="secondary-button compact-action-button"
                             type="button"
-                            onClick={() => exportSlipPdf(item)}
-                            aria-label="Xuất PDF"
-                            title="Xuất PDF"
+                            onMouseEnter={(event) => openActionMenu(item.id, event.currentTarget)}
+                            onClick={(event) => {
+                              if (actionMenu?.id === item.id) {
+                                setActionMenu(null);
+                              } else {
+                                openActionMenu(item.id, event.currentTarget);
+                              }
+                            }}
+                            aria-expanded={actionMenu?.id === item.id}
                           >
-                            <FileDown size={17} aria-hidden="true" />
+                            Actions
                           </button>
-                          <button
-                            className="icon-button"
-                            type="button"
-                            onClick={() => exportSlipExcel(item)}
-                            aria-label="Xuất Excel"
-                            title="Xuất Excel"
-                          >
-                            <FileDown size={17} aria-hidden="true" />
-                          </button>
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={() => generateAuthorizationLetter(item)}
-                            disabled={!item.authorizedReceiverBroker}
-                            title={
-                              item.authorizedReceiverBroker
-                                ? "Tạo giấy ủy quyền"
-                                : "Chọn cò nhận ủy quyền trước"
-                            }
-                          >
-                            <FileText size={17} aria-hidden="true" />
-                            Tạo giấy ủy quyền
-                          </button>
-                          <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
-                            <Edit2 size={17} aria-hidden="true" />
-                          </button>
-                          <button
-                            className="icon-button danger"
-                            type="button"
-                            onClick={() => void deleteItem(item)}
-                            disabled={deletingId === item.id}
-                            aria-label="Xóa"
-                          >
-                            <Trash2 size={17} aria-hidden="true" />
-                          </button>
+                          {actionMenu?.id === item.id
+                            ? createPortal(
+                            <div
+                              className="actions-menu floating-actions-menu"
+                              style={{ top: actionMenu.top, left: actionMenu.left }}
+                              onMouseLeave={() => setActionMenu(null)}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  startEdit(item);
+                                }}
+                              >
+                                <Edit2 size={16} aria-hidden="true" />
+                                Sửa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void deleteItem(item);
+                                }}
+                                disabled={deletingId === item.id}
+                                className="danger"
+                              >
+                                <Trash2 size={16} aria-hidden="true" />
+                                Xóa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void generateContractDocx(item);
+                                }}
+                                disabled={generatingContractId === item.id}
+                                title="Tạo hợp đồng DOCX"
+                              >
+                                <FileText size={16} aria-hidden="true" />
+                                {generatingContractId === item.id ? "Đang tạo..." : "Tạo hợp đồng"}
+                              </button>
+                            </div>,
+                            document.body,
+                          )
+                            : null}
                         </div>
                       </td>
                     </tr>
@@ -649,6 +717,102 @@ export function PurchaseSlipsPage() {
   );
 }
 
+type SearchableOption = {
+  value: string;
+  label: string;
+};
+
+type SearchableSelectProps = {
+  value?: string;
+  onChange: (value: string) => void;
+  options: SearchableOption[];
+  placeholder: string;
+  emptyLabel: string;
+};
+
+function SearchableSelect({ value = "", onChange, options, placeholder, emptyLabel }: SearchableSelectProps) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
+  const filteredOptions = useMemo(() => {
+    const keyword = normalize(query);
+    if (!keyword) return options;
+    return options.filter((option) => normalize(option.label).includes(keyword));
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery(selected?.label ?? "");
+    }
+  }, [open, selected?.label]);
+
+  function chooseOption(nextValue: string) {
+    const nextOption = options.find((option) => option.value === nextValue);
+    onChange(nextValue);
+    setQuery(nextOption?.label ?? "");
+    setOpen(false);
+  }
+
+  return (
+    <div
+      className="searchable-combobox"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+    >
+      <div className="combobox-control">
+        <input
+          type="search"
+          value={query}
+          onFocus={(event) => {
+            setOpen(true);
+            event.currentTarget.select();
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          role="combobox"
+          aria-expanded={open}
+          autoComplete="off"
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={() => chooseOption("")}
+            aria-label="Bỏ chọn"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+      {open ? (
+        <div className="combobox-menu">
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => chooseOption("")}>
+            {emptyLabel}
+          </button>
+          {filteredOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={option.value === value ? "selected" : undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => chooseOption(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+          {filteredOptions.length === 0 ? <span>Không có kết quả</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function formatAuthorizationLetter(letter: AuthorizationLetter, farmers: Farmer[], brokers: Broker[]) {
   const farmer = letter.farmer_id
     ? farmers.find((item) => item.id === letter.farmer_id)
@@ -660,27 +824,61 @@ function formatAuthorizationLetter(letter: AuthorizationLetter, farmers: Farmer[
   return `${farmer?.name ?? "Nông dân"} / ${broker?.name ?? "Cò lúa"}${date}`;
 }
 
-function buildSlipExportTable(item: SlipRow) {
-  return {
-    title: "Purchase slip",
-    headers: ["Field", "Value"],
-    rows: [
-      ["Purchase date", formatDate(item.purchase_date)],
-      ["Season", item.season?.name ?? "-"],
-      ["Farmer", item.farmer?.name ?? "-"],
-      ["Broker", item.broker?.name ?? "-"],
-      ["Authorized receiver broker", item.authorizedReceiverBroker?.name ?? "-"],
-      ["Rice type", item.riceType?.name ?? "-"],
-      ["Transport trip", item.transportTrip?.code ?? "-"],
-      ["Weight kg", item.weight_kg],
-      ["Unit price", item.unit_price],
-      ["Total amount", item.total_amount],
-      ["Broker commission per kg", item.broker_commission_per_kg],
-      ["Broker commission total", item.broker_commission_total],
-      ["Payment status", formatPaymentStatus(item.payment_status)],
-      ["Note", item.note ?? "-"],
-    ],
-  };
+function moneyToVietnameseWords(value: number) {
+  const amount = Math.round(Math.abs(value));
+  if (amount === 0) return "Không đồng";
+
+  const unitLabels = ["", "nghìn", "triệu", "tỷ", "nghìn tỷ", "triệu tỷ"];
+  const groups: number[] = [];
+  let remaining = amount;
+
+  while (remaining > 0) {
+    groups.push(remaining % 1000);
+    remaining = Math.floor(remaining / 1000);
+  }
+
+  const parts: string[] = [];
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (group === 0) continue;
+
+    const words = readVietnameseNumberGroup(group, index < groups.length - 1);
+    const unit = unitLabels[index] ?? "";
+    parts.push([words, unit].filter(Boolean).join(" "));
+  }
+
+  const sentence = `${parts.join(" ")} đồng`.replace(/\s+/g, " ").trim();
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+function readVietnameseNumberGroup(value: number, full: boolean) {
+  const digits = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
+  const hundred = Math.floor(value / 100);
+  const ten = Math.floor((value % 100) / 10);
+  const unit = value % 10;
+  const words: string[] = [];
+
+  if (hundred > 0) {
+    words.push(digits[hundred], "trăm");
+  } else if (full && (ten > 0 || unit > 0)) {
+    words.push("không", "trăm");
+  }
+
+  if (ten > 1) {
+    words.push(digits[ten], "mươi");
+    if (unit === 1) words.push("mốt");
+    else if (unit === 5) words.push("lăm");
+    else if (unit > 0) words.push(digits[unit]);
+  } else if (ten === 1) {
+    words.push("mười");
+    if (unit === 5) words.push("lăm");
+    else if (unit > 0) words.push(digits[unit]);
+  } else if (unit > 0) {
+    if (hundred > 0 || full) words.push("linh");
+    words.push(digits[unit]);
+  }
+
+  return words.join(" ");
 }
 
 function formatPaymentStatus(value: PaymentStatus) {
@@ -716,4 +914,124 @@ function formatMoney(value: number) {
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function buildContractTemplateData(item: SlipRow) {
+  const farmerDateOfBirth = formatDateOrFillLine(item.farmer?.date_of_birth);
+  const farmerIssuedDate = formatDateOrFillLine(item.farmer?.citizen_id_issued_date);
+  const farmerIssuedPlace = fillLine();
+
+  return {
+    farmer_name: toText(item.farmer?.name),
+    farmer_full_name: toText(item.farmer?.name),
+    farmer_gender: toTextOrFillLine(item.farmer?.gender),
+    farmer_sex: toTextOrFillLine(item.farmer?.gender),
+    farmer_citizen_id: toText(item.farmer?.citizen_id),
+    farmer_id_number: toText(item.farmer?.citizen_id),
+    farmer_date_of_birth: farmerDateOfBirth,
+    farmer_birth_date: farmerDateOfBirth,
+    farmer_dob: farmerDateOfBirth,
+    farmer_citizen_id_issued_date: farmerIssuedDate,
+    farmer_cccd_issued_date: farmerIssuedDate,
+    farmer_citizen_id_issued_place: farmerIssuedPlace,
+    farmer_cccd_issued_place: farmerIssuedPlace,
+    farmer_phone: toTextOrFillLine(item.farmer?.phone),
+    farmer_permanent_address: toTextOrFillLine(item.farmer?.permanent_address),
+    farmer_address: toTextOrFillLine(item.farmer?.address),
+    farmer_bank_name: toTextOrFillLine(item.farmer?.bank_name),
+    farmer_bank_account_number: toTextOrFillLine(item.farmer?.bank_account_number),
+    farmer_bank_account_name: toTextOrFillLine(item.farmer?.bank_account_name),
+    rice_type: toText(item.riceType?.name),
+    weight_kg: formatNumber(item.weight_kg),
+    unit_price: formatMoney(item.unit_price),
+    total_amount: formatMoney(item.total_amount),
+    total_amount_words: moneyToVietnameseWords(item.total_amount),
+    purchase_date: formatDateOrEmpty(item.purchase_date),
+    broker_name: toText(item.broker?.name),
+    note: toTextOrFillLine(item.note),
+    transport_trip_code: toText(item.transportTrip?.code),
+  };
+}
+
+function buildContractDoc(templateBuffer: ArrayBuffer) {
+  const templateDelimiters = [
+    { start: "{{", end: "}}" },
+    { start: "{", end: "}" },
+  ];
+  let latestError: unknown = null;
+
+  for (const delimiters of templateDelimiters) {
+    try {
+      const zip = new PizZip(templateBuffer.slice(0));
+      return new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters,
+        nullGetter: () => "",
+      });
+    } catch (currentError) {
+      latestError = currentError;
+    }
+  }
+
+  throw latestError ?? new Error("Không thể đọc file mẫu hợp đồng DOCX.");
+}
+
+function formatContractTemplateError(error: unknown) {
+  if (error && typeof error === "object") {
+    const detail = error as {
+      message?: unknown;
+      properties?: {
+        errors?: Array<{
+          properties?: { explanation?: unknown };
+        }>;
+      };
+    };
+    const detailErrors = detail.properties?.errors ?? [];
+    const explanations = detailErrors
+      .map((item) => item.properties?.explanation)
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    if (explanations.length > 0) {
+      return `Mẫu hợp đồng DOCX đang sai định dạng tag: ${explanations[0]}`;
+    }
+    if (typeof detail.message === "string" && detail.message.trim().length > 0) {
+      return detail.message;
+    }
+  }
+
+  return "Không thể tạo hợp đồng DOCX. Vui lòng kiểm tra lại file mẫu.";
+}
+
+function formatDateOrEmpty(value: string | null | undefined) {
+  if (!value) return "";
+  return formatDate(value);
+}
+
+function toText(value: string | null | undefined) {
+  return value?.trim() ?? "";
+}
+
+function formatDateOrFillLine(value: string | null | undefined) {
+  if (!value) return fillLine();
+  return formatDate(value);
+}
+
+function toTextOrFillLine(value: string | null | undefined) {
+  const text = toText(value);
+  return text.length > 0 ? text : fillLine();
+}
+
+function fillLine() {
+  return "....................";
+}
+
+function buildContractFileName(item: SlipRow) {
+  const fallbackName = "nong-dan";
+  const rawName = item.farmer?.name?.trim() || fallbackName;
+  const sanitizedName = rawName
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return `${sanitizedName || fallbackName}.docx`;
 }

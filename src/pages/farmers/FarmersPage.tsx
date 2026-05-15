@@ -13,12 +13,15 @@ type Farmer = Tables<"farmers">;
 
 const farmerSchema = z.object({
   name: z.string().trim().min(1, "Vui lòng nhập tên nông dân"),
-  phone: z.string().trim().optional(),
-  citizen_id: z.string().trim().optional(),
-  gender: z.string().trim().optional(),
-  date_of_birth: z.string().optional(),
-  permanent_address: z.string().trim().optional(),
-  citizen_id_issued_date: z.string().optional(),
+  phone: z.string().trim().min(1, "Vui lòng nhập số điện thoại"),
+  citizen_id: z.string().trim().min(1, "Vui lòng nhập CCCD"),
+  gender: z
+    .string()
+    .trim()
+    .refine((value) => value === "Nam" || value === "Nữ", "Vui lòng chọn giới tính"),
+  date_of_birth: z.string().trim().min(1, "Vui lòng chọn ngày sinh"),
+  permanent_address: z.string().trim().min(1, "Vui lòng nhập địa chỉ thường trú"),
+  citizen_id_issued_date: z.string().trim().min(1, "Vui lòng chọn ngày cấp CCCD"),
   citizen_id_qr_raw_text: z.string().trim().optional(),
   bank_name: z.string().trim().optional(),
   bank_account_number: z.string().trim().optional(),
@@ -27,7 +30,7 @@ const farmerSchema = z.object({
   note: z.string().trim().optional(),
 });
 
-type FarmerFormValues = z.infer<typeof farmerSchema>;
+type FarmerFormValues = z.input<typeof farmerSchema>;
 
 type ParsedCitizenQr = {
   citizen_id: string;
@@ -58,6 +61,17 @@ const emptyValues: FarmerFormValues = {
   address: "",
   note: "",
 };
+
+function RequiredLabel({ children }: { children: string }) {
+  return (
+    <span>
+      {children}{" "}
+      <span aria-hidden="true" style={{ color: "#dc2626", fontWeight: 700 }}>
+        *
+      </span>
+    </span>
+  );
+}
 
 export function FarmersPage() {
   const [items, setItems] = useState<Farmer[]>([]);
@@ -317,48 +331,53 @@ export function FarmersPage() {
           ) : null}
 
           <label className="field">
-            <span>Tên nông dân</span>
+            <RequiredLabel>Tên nông dân</RequiredLabel>
             <input {...register("name")} placeholder="VD: Nguyễn Văn A" />
             {errors.name ? <small>{errors.name.message}</small> : null}
           </label>
 
           <div className="field-grid">
             <label className="field">
-              <span>Số điện thoại</span>
+              <RequiredLabel>Số điện thoại</RequiredLabel>
               <input {...register("phone")} inputMode="tel" placeholder="VD: 090..." />
+              {errors.phone ? <small>{errors.phone.message}</small> : null}
             </label>
             <label className="field">
-              <span>CCCD</span>
+              <RequiredLabel>CCCD</RequiredLabel>
               <input {...register("citizen_id")} inputMode="numeric" placeholder="Số CCCD" />
+              {errors.citizen_id ? <small>{errors.citizen_id.message}</small> : null}
             </label>
           </div>
 
           <div className="field-grid">
             <label className="field">
-              <span>Giới tính</span>
-              <input {...register("gender")} placeholder="Nam / Nữ" />
+              <RequiredLabel>Giới tính</RequiredLabel>
+              <select {...register("gender")}>
+                <option value="">Chọn giới tính</option>
+                <option value="Nam">Nam</option>
+                <option value="Nữ">Nữ</option>
+              </select>
+              {errors.gender ? <small>{errors.gender.message}</small> : null}
             </label>
             <label className="field">
-              <span>Ngày sinh</span>
+              <RequiredLabel>Ngày sinh</RequiredLabel>
               <input type="date" {...register("date_of_birth")} />
+              {errors.date_of_birth ? <small>{errors.date_of_birth.message}</small> : null}
             </label>
           </div>
 
           <div className="field-grid">
             <label className="field">
-              <span>Ngày cấp CCCD</span>
+              <RequiredLabel>Ngày cấp CCCD</RequiredLabel>
               <input type="date" {...register("citizen_id_issued_date")} />
+              {errors.citizen_id_issued_date ? <small>{errors.citizen_id_issued_date.message}</small> : null}
             </label>
             <label className="field">
-              <span>Địa chỉ thường trú</span>
+              <RequiredLabel>Địa chỉ thường trú</RequiredLabel>
               <input {...register("permanent_address")} placeholder="Theo CCCD" />
+              {errors.permanent_address ? <small>{errors.permanent_address.message}</small> : null}
             </label>
           </div>
-
-          <label className="field">
-            <span>Địa chỉ liên hệ / ghi chú địa chỉ</span>
-            <input {...register("address")} placeholder="Ấp, xã, huyện..." />
-          </label>
 
           <label className="field">
             <span>Raw QR CCCD</span>
