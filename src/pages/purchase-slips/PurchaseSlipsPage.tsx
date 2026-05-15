@@ -83,6 +83,7 @@ export function PurchaseSlipsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingContractId, setGeneratingContractId] = useState<string | null>(null);
+  const [generatingDeliveryReceiptId, setGeneratingDeliveryReceiptId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<SlipRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -168,7 +169,7 @@ export function PurchaseSlipsPage() {
   function openActionMenu(itemId: string, element: HTMLElement) {
     const rect = element.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 132;
+    const menuHeight = 172;
     const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
     const preferredTop = rect.bottom + 6;
     const top = preferredTop + menuHeight > window.innerHeight
@@ -395,6 +396,35 @@ export function PurchaseSlipsPage() {
       setError(message);
     } finally {
       setGeneratingContractId(null);
+    }
+  }
+
+  async function generateDeliveryReceiptDocx(item: SlipRow) {
+    setGeneratingDeliveryReceiptId(item.id);
+    setError(null);
+
+    try {
+      const response = await fetch("/templates/delivery-receipt-template.docx");
+      if (!response.ok) {
+        throw new Error("Không tìm thấy file mẫu biên bản giao nhận tại /templates/delivery-receipt-template.docx.");
+      }
+
+      const templateBuffer = await response.arrayBuffer();
+      const doc = buildContractDoc(templateBuffer);
+      doc.render(buildDeliveryReceiptTemplateData(item));
+
+      const blob = doc.getZip().generate({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      saveAs(blob, buildDeliveryReceiptFileName(item));
+    } catch (currentError) {
+      const message = currentError instanceof Error
+        ? currentError.message
+        : "Không thể tạo biên bản giao nhận DOCX. Vui lòng kiểm tra lại file mẫu.";
+      setError(message);
+    } finally {
+      setGeneratingDeliveryReceiptId(null);
     }
   }
 
@@ -703,6 +733,20 @@ export function PurchaseSlipsPage() {
                                 <FileText size={16} aria-hidden="true" />
                                 {generatingContractId === item.id ? "Đang tạo..." : "Tạo hợp đồng"}
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void generateDeliveryReceiptDocx(item);
+                                }}
+                                disabled={generatingDeliveryReceiptId === item.id}
+                                title="Tạo biên bản giao nhận DOCX"
+                              >
+                                <FileText size={16} aria-hidden="true" />
+                                {generatingDeliveryReceiptId === item.id
+                                  ? "Đang tạo..."
+                                  : "Tạo biên bản giao nhận"}
+                              </button>
                             </div>,
                             document.body,
                           )
@@ -973,6 +1017,30 @@ function buildContractTemplateData(item: SlipRow) {
   };
 }
 
+function buildDeliveryReceiptTemplateData(item: SlipRow) {
+  const purchaseDateParts = getDateParts(item.purchase_date);
+  const contractNumber = toText(item.authorizationLetter?.code);
+
+  return {
+    receipt_no: buildDeliveryReceiptNumber(item),
+    receipt_location: toTextOrFillLine(item.farmer?.permanent_address),
+    receipt_day: purchaseDateParts.day,
+    receipt_month: purchaseDateParts.month,
+    receipt_year: purchaseDateParts.year,
+    contract_no: contractNumber.length > 0 ? contractNumber : fillLine(),
+    farmer_name: toTextOrFillLine(item.farmer?.name),
+    farmer_citizen_id: toTextOrFillLine(item.farmer?.citizen_id),
+    farmer_citizen_id_issued_date: formatDateOrFillLine(item.farmer?.citizen_id_issued_date),
+    farmer_phone: toTextOrFillLine(item.farmer?.phone),
+    farmer_permanent_address: toTextOrFillLine(item.farmer?.permanent_address),
+    farmer_bank_account_number: toTextOrFillLine(item.farmer?.bank_account_number),
+    farmer_bank_name: toTextOrFillLine(item.farmer?.bank_name),
+    rice_type: toTextOrFillLine(item.riceType?.name),
+    weight_kg: formatNumber(item.weight_kg),
+    delivery_note: toTextOrFillLine(item.note),
+  };
+}
+
 function buildContractDoc(templateBuffer: ArrayBuffer) {
   const templateDelimiters = [
     { start: "{{", end: "}}" },
@@ -1056,6 +1124,16 @@ function buildContractFileName(item: SlipRow) {
   return `${sanitizedName || fallbackName}.docx`;
 }
 
+function buildDeliveryReceiptFileName(item: SlipRow) {
+  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
+  return `bien-ban-giao-nhan-${farmerName}.docx`;
+}
+
+function buildDeliveryReceiptNumber(item: SlipRow) {
+  const datePart = (item.purchase_date ?? "").replaceAll("-", "") || "00000000";
+  return `BBGN-${datePart}-${item.id.slice(0, 6).toUpperCase()}`;
+}
+
 function getDateParts(value: string | null | undefined) {
   if (!value) {
     return {
@@ -1071,4 +1149,11 @@ function getDateParts(value: string | null | undefined) {
     month: month || fillLine(),
     year: year || fillLine(),
   };
+}
+
+function sanitizeFileName(value: string) {
+  return value
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
