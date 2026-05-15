@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useForm } from "react-hook-form";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { z } from "zod";
+import { Button } from "@/components/ui/button";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -218,8 +219,8 @@ export function FarmersPage() {
           <div className="card-title-row">
             <h2>{formTitle}</h2>
             <div className="row-actions">
-              <button
-                className="secondary-button"
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => {
                   setScannerOpen((current) => !current);
@@ -228,7 +229,7 @@ export function FarmersPage() {
               >
                 <ScanLine size={17} aria-hidden="true" />
                 Quét CCCD
-              </button>
+              </Button>
               {editingItem ? (
                 <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
                   <X size={18} aria-hidden="true" />
@@ -297,10 +298,10 @@ export function FarmersPage() {
             <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
           </label>
 
-          <button className="primary-button" type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving}>
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nông dân"}
-          </button>
+          </Button>
         </form>
 
         <div className="table-card">
@@ -636,23 +637,23 @@ function CitizenQrScanner({
             hidden
             onChange={(event) => void scanUploadedFile(event.target.files?.[0] ?? null)}
           />
-          <button className="secondary-button" type="button" onClick={() => void captureFrameAndScan()}>
+          <Button variant="secondary" type="button" onClick={() => void captureFrameAndScan()}>
             <Camera size={17} aria-hidden="true" />
             Chụp để quét
-          </button>
-          <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>
+          </Button>
+          <Button variant="secondary" type="button" onClick={() => fileInputRef.current?.click()}>
             <ImageUp size={17} aria-hidden="true" />
             Upload QR
-          </button>
+          </Button>
         </div>
         <div className="scanner-secondary-actions">
-          <button className="secondary-button" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
+          <Button variant="secondary" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
             Đổi camera
-          </button>
-          <button className="secondary-button" type="button" onClick={onClose} aria-label="Đóng scanner">
+          </Button>
+          <Button variant="secondary" type="button" onClick={onClose} aria-label="Đóng scanner">
             <X size={18} aria-hidden="true" />
             Đóng quét
-          </button>
+          </Button>
         </div>
       </div>
 
