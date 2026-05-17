@@ -64,9 +64,27 @@ const emptyValues: FarmerFormValues = {
 };
 
 const QR_SCAN_MIN_SIZE = 180;
-const QR_SCAN_IDEAL_SIZE = 300;
+const QR_SCAN_IDEAL_SIZE = 260;
 const QR_CAPTURE_OUTPUT_MIN_SIZE = 480;
 const QR_CAPTURE_OUTPUT_MAX_SIZE = 1100;
+
+type BrowserBarcodeResult = {
+  rawValue?: string;
+  format?: string;
+  cornerPoints?: Array<{ x: number; y: number }>;
+  boundingBox?: DOMRectReadOnly;
+};
+
+type BrowserBarcodeDetector = {
+  detect: (source: CanvasImageSource) => Promise<BrowserBarcodeResult[]>;
+};
+
+type BrowserBarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BrowserBarcodeDetector;
+
+type WindowWithBarcodeDetector = Window &
+  typeof globalThis & {
+    BarcodeDetector?: BrowserBarcodeDetectorConstructor;
+  };
 
 function RequiredLabel({ children }: { children: string }) {
   return (
@@ -621,36 +639,40 @@ function CitizenQrScanner({
 
     let active = true;
     const effectStoppedRef = { current: false };
+    let stopNativeScanLoop: (() => void) | null = null;
     clearScannerContainer();
     const scanner = new Html5Qrcode(scannerElementId, {
       verbose: false,
       formatsToSupport: getQrCodeFormats(),
-      useBarCodeDetectorIfSupported: true,
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      useBarCodeDetectorIfSupported: false,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: false },
     });
     scannerRef.current = scanner;
     stoppedRef.current = false;
     const cameraConfig = selectedCameraId
       ? selectedCameraId
       : ({ facingMode: { ideal: "environment" } } as MediaTrackConstraints);
+    const handleDecodedText = (decodedText: string, decodedResult?: unknown) => {
+      if (decodedResult) {
+        updateDistanceIndicator(decodedResult);
+      }
+
+      const now = Date.now();
+      const isDuplicate =
+        decodedText === lastScanRef.current.text && now - lastScanRef.current.at < 1200;
+      if (isDuplicate) return;
+
+      lastScanRef.current = { text: decodedText, at: now };
+      markRealtimeDetected();
+      setUploadScanStatus("Đã nhận dữ liệu QR, đang quét realtime...");
+      onScan(decodedText);
+    };
 
     scanner
       .start(
         cameraConfig,
         buildRealtimeScannerConfig(selectedCameraId),
-        (decodedText, decodedResult) => {
-          updateDistanceIndicator(decodedResult);
-
-          const now = Date.now();
-          const isDuplicate =
-            decodedText === lastScanRef.current.text && now - lastScanRef.current.at < 1200;
-          if (isDuplicate) return;
-
-          lastScanRef.current = { text: decodedText, at: now };
-          markRealtimeDetected();
-          setUploadScanStatus("Đã nhận dữ liệu QR, đang quét realtime...");
-          onScan(decodedText);
-        },
+        handleDecodedText,
         () => {
           // Ignore frame-level decode misses; they happen continuously while scanning.
         },
@@ -662,6 +684,7 @@ function CitizenQrScanner({
           return;
         }
         void tuneActiveCamera(scanner);
+        stopNativeScanLoop = startNativeQrScanLoop(scannerElementId, handleDecodedText, setRealtimeScanStatus);
       })
       .catch((scanError: unknown) => {
         if (!active) return;
@@ -674,6 +697,7 @@ function CitizenQrScanner({
         window.clearTimeout(realtimeStatusTimerRef.current);
         realtimeStatusTimerRef.current = null;
       }
+      stopNativeScanLoop?.();
       void stopScanner(scanner, effectStoppedRef);
       clearScannerContainer();
       if (scannerRef.current === scanner) {
@@ -854,9 +878,8 @@ function getQrCodeFormats() {
 
 function buildRealtimeScannerConfig(selectedCameraId: string | null): Html5QrcodeCameraScanConfig {
   return {
-    fps: 25,
+    fps: 12,
     qrbox: buildRealtimeQrbox,
-    aspectRatio: 16 / 9,
     disableFlip: true,
     videoConstraints: buildVideoConstraints(selectedCameraId),
   };
@@ -874,18 +897,18 @@ function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConst
   if (selectedCameraId) {
     return {
       deviceId: { exact: selectedCameraId },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30, max: 60 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 24, max: 30 },
       resizeMode: "crop-and-scale",
     } as MediaTrackConstraints;
   }
 
   return {
     facingMode: { ideal: "environment" },
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 30, max: 60 },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 24, max: 30 },
     resizeMode: "crop-and-scale",
   } as MediaTrackConstraints;
 }
@@ -930,6 +953,97 @@ async function tuneActiveCamera(scanner: Html5Qrcode) {
 function cameraCapabilityIncludes(capabilities: Record<string, unknown>, key: string, value: string) {
   const candidate = capabilities[key];
   return Array.isArray(candidate) && candidate.includes(value);
+}
+
+function startNativeQrScanLoop(
+  scannerElementId: string,
+  onDetected: (decodedText: string, decodedResult?: unknown) => void,
+  onStatus: (message: string) => void,
+) {
+  const detector = createNativeQrDetector();
+  if (!detector) return null;
+
+  let active = true;
+  let scanning = false;
+  let timeoutId: number | null = null;
+
+  onStatus("Đang quét QR nhanh bằng camera...");
+
+  const scheduleNextScan = () => {
+    if (!active) return;
+    timeoutId = window.setTimeout(() => {
+      void scanFrame();
+    }, 100);
+  };
+
+  const scanFrame = async () => {
+    if (!active || scanning) return;
+
+    const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+      scheduleNextScan();
+      return;
+    }
+
+    scanning = true;
+    try {
+      const results = await detector.detect(video);
+      const qrResult = findNativeQrResult(results);
+
+      if (active && qrResult?.rawValue) {
+        onDetected(qrResult.rawValue, buildDecodedResultFromNative(qrResult));
+      }
+    } catch {
+      // Some browsers expose BarcodeDetector but reject video frames intermittently. Keep the ZXing fallback running.
+    } finally {
+      scanning = false;
+      scheduleNextScan();
+    }
+  };
+
+  void scanFrame();
+
+  return () => {
+    active = false;
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  };
+}
+
+function createNativeQrDetector() {
+  const BarcodeDetectorConstructor = (window as WindowWithBarcodeDetector).BarcodeDetector;
+  if (!BarcodeDetectorConstructor) return null;
+
+  try {
+    return new BarcodeDetectorConstructor({ formats: ["qr_code"] });
+  } catch {
+    return null;
+  }
+}
+
+function findNativeQrResult(results: BrowserBarcodeResult[]) {
+  return (
+    results.find((result) => result.rawValue && (result.format === "qr_code" || result.format === "QR_CODE")) ??
+    results.find((result) => result.rawValue) ??
+    null
+  );
+}
+
+function buildDecodedResultFromNative(result: BrowserBarcodeResult) {
+  const points = result.cornerPoints ?? buildCornerPointsFromBoundingBox(result.boundingBox);
+  return { result: { resultPoints: points } };
+}
+
+function buildCornerPointsFromBoundingBox(boundingBox: DOMRectReadOnly | undefined) {
+  if (!boundingBox) return [];
+
+  return [
+    { x: boundingBox.x, y: boundingBox.y },
+    { x: boundingBox.x + boundingBox.width, y: boundingBox.y },
+    { x: boundingBox.x + boundingBox.width, y: boundingBox.y + boundingBox.height },
+    { x: boundingBox.x, y: boundingBox.y + boundingBox.height },
+  ];
 }
 
 function estimateQrDistanceHint(
