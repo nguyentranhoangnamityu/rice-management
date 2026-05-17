@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type TransportRoute = Tables<"transport_routes">;
 type TransportRouteStop = Tables<"transport_route_stops">;
@@ -36,9 +39,19 @@ const emptyValues: RouteFormValues = {
 };
 
 export function TransportRoutesPage() {
-  const [items, setItems] = useState<RouteWithStops[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {
+    items: routes,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<TransportRoute>("transport_routes");
+  const [stopMap, setStopMap] = useState<Map<string, TransportRouteStop[]>>(new Map());
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,62 +74,55 @@ export function TransportRoutesPage() {
     name: "stops",
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
-
-    return items.filter((item) =>
-      [item.name, item.note, ...item.stops.map((stop) => stop.location_name)].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [items, search]);
-
   const formTitle = editingItem ? "Sửa tuyến vận chuyển" : "Thêm tuyến vận chuyển";
 
-  async function loadRoutes() {
-    setLoading(true);
-    setError(null);
 
-    const { data: routes, error: routesError } = await supabase
-      .from("transport_routes")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (routesError) {
-      setError(routesError.message);
-      setLoading(false);
-      return;
-    }
-
-    const routeIds = (routes ?? []).map((route) => route.id);
-
-    const { data: stops, error: stopsError } = routeIds.length
-      ? await supabase
-          .from("transport_route_stops")
-          .select("*")
-          .in("route_id", routeIds)
-          .order("stop_order", { ascending: true })
-      : { data: [], error: null };
-
-    if (stopsError) {
-      setError(stopsError.message);
-      setLoading(false);
-      return;
-    }
-
-    setItems(
-      (routes ?? []).map((route) => ({
+  const items = useMemo<RouteWithStops[]>(
+    () =>
+      routes.map((route) => ({
         ...route,
-        stops: (stops ?? []).filter((stop) => stop.route_id === route.id),
+        stops: stopMap.get(route.id) ?? [],
       })),
-    );
-    setLoading(false);
-  }
+    [routes, stopMap],
+  );
 
   useEffect(() => {
-    void loadRoutes();
-  }, []);
+    let cancelled = false;
+
+    async function loadStops() {
+      if (routes.length === 0) {
+        setStopMap(new Map());
+        return;
+      }
+
+      const routeIds = routes.map((route) => route.id);
+      const { data: stops, error: stopsError } = await supabase
+        .from("transport_route_stops")
+        .select("*")
+        .in("route_id", routeIds)
+        .order("stop_order", { ascending: true });
+
+      if (cancelled) return;
+
+      if (stopsError) {
+        setError(formatDbError(stopsError));
+        return;
+      }
+
+      const map = new Map<string, TransportRouteStop[]>();
+      for (const stop of stops ?? []) {
+        const list = map.get(stop.route_id) ?? [];
+        list.push(stop);
+        map.set(stop.route_id, list);
+      }
+      setStopMap(map);
+    }
+
+    void loadStops();
+    return () => {
+      cancelled = true;
+    };
+  }, [routes]);
 
   function startEdit(item: RouteWithStops) {
     setEditingItem(item);
@@ -159,7 +165,7 @@ export function TransportRoutesPage() {
       : await supabase.from("transport_routes").insert(routePayload).select("id").single();
 
     if (routeError || !savedRoute) {
-      setError(routeError?.message ?? "Không thể lưu tuyến vận chuyển.");
+      setError(formatDbError(routeError, "Không thể lưu tuyến vận chuyển."));
       setSaving(false);
       return;
     }
@@ -173,7 +179,7 @@ export function TransportRoutesPage() {
         .eq("route_id", routeId);
 
       if (deleteStopsError) {
-        setError(deleteStopsError.message);
+        setError(formatDbError(deleteStopsError));
         setSaving(false);
         return;
       }
@@ -191,10 +197,10 @@ export function TransportRoutesPage() {
       .insert(stopsPayload);
 
     if (stopsError) {
-      setError(stopsError.message);
+      setError(formatDbError(stopsError));
     } else {
       clearForm();
-      await loadRoutes();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -213,10 +219,10 @@ export function TransportRoutesPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadRoutes();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -340,13 +346,14 @@ export function TransportRoutesPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải tuyến vận chuyển...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có tuyến vận chuyển phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table wide-table">
                 <thead>
@@ -358,7 +365,7 @@ export function TransportRoutesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name}</td>
                       <td>{formatRoutePath(item.stops)}</td>
@@ -384,6 +391,14 @@ export function TransportRoutesPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
@@ -398,10 +413,6 @@ function formatRoutePath(stops: TransportRouteStop[]) {
     .sort((a, b) => a.stop_order - b.stop_order)
     .map((stop) => stop.location_name)
     .join(" → ");
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

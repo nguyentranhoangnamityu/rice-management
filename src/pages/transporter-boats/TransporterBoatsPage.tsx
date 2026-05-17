@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type TransporterBoat = Tables<"transporter_boats">;
 
@@ -34,9 +37,18 @@ const emptyValues: TransporterBoatFormValues = {
 };
 
 export function TransporterBoatsPage() {
-  const [items, setItems] = useState<TransporterBoat[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<TransporterBoat>("transporter_boats");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,40 +65,7 @@ export function TransporterBoatsPage() {
     defaultValues: emptyValues,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
-
-    return items.filter((item) =>
-      [item.boat_name, item.owner_name, item.phone, item.citizen_id].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [items, search]);
-
   const formTitle = editingItem ? "Sửa ghe vận chuyển" : "Thêm ghe vận chuyển";
-
-  async function loadTransporterBoats() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("transporter_boats")
-      .select("*")
-      .order("boat_name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadTransporterBoats();
-  }, []);
 
   function startEdit(item: TransporterBoat) {
     setEditingItem(item);
@@ -129,10 +108,10 @@ export function TransporterBoatsPage() {
       : await supabase.from("transporter_boats").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadTransporterBoats();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -151,10 +130,10 @@ export function TransporterBoatsPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadTransporterBoats();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -259,13 +238,14 @@ export function TransporterBoatsPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải ghe vận chuyển...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có ghe phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table wide-table">
                 <thead>
@@ -279,7 +259,7 @@ export function TransporterBoatsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.boat_name}</td>
                       <td>{item.owner_name || "-"}</td>
@@ -313,15 +293,19 @@ export function TransporterBoatsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
     </section>
   );
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

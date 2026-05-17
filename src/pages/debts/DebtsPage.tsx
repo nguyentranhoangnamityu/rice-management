@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileDown } from "lucide-react";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 import { exportExcel, exportPdf } from "../../lib/export";
+import { PAGE_SIZE, getTotalPages } from "../../lib/pagination";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type Broker = Tables<"brokers">;
 type Factory = Tables<"factories">;
@@ -52,6 +55,9 @@ export function DebtsPage() {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [seasonFilter, setSeasonFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
+  const [brokerPage, setBrokerPage] = useState(1);
+  const [transportPage, setTransportPage] = useState(1);
+  const [factoryPage, setFactoryPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +93,7 @@ export function DebtsPage() {
       factoriesResult.error;
 
     if (firstError) {
-      setError(firstError.message);
+      setError(formatDbError(firstError));
       setLoading(false);
       return;
     }
@@ -105,6 +111,12 @@ export function DebtsPage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    setBrokerPage(1);
+    setTransportPage(1);
+    setFactoryPage(1);
+  }, [seasonFilter, paymentStatusFilter]);
 
   const summaries = useMemo(() => {
     const brokerMap = new Map(brokers.map((broker) => [broker.id, broker]));
@@ -206,6 +218,21 @@ export function DebtsPage() {
     transportTrips,
   ]);
 
+  const paginatedBrokerRows = useMemo(() => {
+    const start = (brokerPage - 1) * PAGE_SIZE;
+    return summaries.brokerRows.slice(start, start + PAGE_SIZE);
+  }, [brokerPage, summaries.brokerRows]);
+
+  const paginatedTransportRows = useMemo(() => {
+    const start = (transportPage - 1) * PAGE_SIZE;
+    return summaries.transportRows.slice(start, start + PAGE_SIZE);
+  }, [transportPage, summaries.transportRows]);
+
+  const paginatedFactoryRows = useMemo(() => {
+    const start = (factoryPage - 1) * PAGE_SIZE;
+    return summaries.factoryRows.slice(start, start + PAGE_SIZE);
+  }, [factoryPage, summaries.factoryRows]);
+
   function exportDebtsPdf() {
     exportPdf({
       title: "Debt summary",
@@ -294,6 +321,7 @@ export function DebtsPage() {
             {summaries.brokerRows.length === 0 ? (
               <div className="state-box">Không có dữ liệu hoa hồng phù hợp.</div>
             ) : (
+              <>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -304,7 +332,7 @@ export function DebtsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {summaries.brokerRows.map((row) => (
+                    {paginatedBrokerRows.map((row) => (
                       <tr key={row.brokerId}>
                         <td>{row.brokerName}</td>
                         <td>{formatNumber(row.totalWeight)}</td>
@@ -314,6 +342,13 @@ export function DebtsPage() {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                page={brokerPage}
+                totalPages={getTotalPages(summaries.brokerRows.length)}
+                total={summaries.brokerRows.length}
+                onPageChange={setBrokerPage}
+              />
+              </>
             )}
           </DebtSection>
 
@@ -321,6 +356,7 @@ export function DebtsPage() {
             {summaries.transportRows.length === 0 ? (
               <div className="state-box">Không có dữ liệu vận chuyển phù hợp.</div>
             ) : (
+              <>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -332,7 +368,7 @@ export function DebtsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {summaries.transportRows.map((row) => (
+                    {paginatedTransportRows.map((row) => (
                       <tr key={row.boatId}>
                         <td>{row.boatName}</td>
                         <td>{row.ownerName}</td>
@@ -343,6 +379,13 @@ export function DebtsPage() {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                page={transportPage}
+                totalPages={getTotalPages(summaries.transportRows.length)}
+                total={summaries.transportRows.length}
+                onPageChange={setTransportPage}
+              />
+              </>
             )}
           </DebtSection>
 
@@ -350,6 +393,7 @@ export function DebtsPage() {
             {summaries.factoryRows.length === 0 ? (
               <div className="state-box">Không có dữ liệu xử lý phù hợp.</div>
             ) : (
+              <>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -361,7 +405,7 @@ export function DebtsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {summaries.factoryRows.map((row) => (
+                    {paginatedFactoryRows.map((row) => (
                       <tr key={row.factoryId}>
                         <td>{row.factoryName}</td>
                         <td>{row.totalRecords}</td>
@@ -372,6 +416,13 @@ export function DebtsPage() {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                page={factoryPage}
+                totalPages={getTotalPages(summaries.factoryRows.length)}
+                total={summaries.factoryRows.length}
+                onPageChange={setFactoryPage}
+              />
+              </>
             )}
           </DebtSection>
         </>

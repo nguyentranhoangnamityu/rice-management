@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { navigation } from "../../config/navigation";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { AppBrand } from "./AppBrand";
 import { MobileTopBar } from "./MobileTopBar";
 
 export function AppLayout() {
@@ -21,13 +22,7 @@ export function AppLayout() {
     <div className={`app-shell${isMobile ? " app-shell-mobile" : ""}`}>
       {!isMobile ? (
         <aside className="sidebar" aria-label="Điều hướng chính">
-          <div className="brand">
-            <div className="brand-mark">RM</div>
-            <div>
-              <strong>Quản lý lúa</strong>
-              <span>Rice Management</span>
-            </div>
-          </div>
+          <AppBrand variant="sidebar" />
 
           <nav className="nav-list">
             {navigation.map((item) => (

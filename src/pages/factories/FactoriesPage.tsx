@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type Factory = Tables<"factories">;
 type FactoryType = Enums<"factory_type">;
@@ -43,9 +46,18 @@ const emptyValues: FactoryFormValues = {
 };
 
 export function FactoriesPage() {
-  const [items, setItems] = useState<Factory[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<Factory>("factories");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,40 +74,7 @@ export function FactoriesPage() {
     defaultValues: emptyValues,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
-
-    return items.filter((item) =>
-      [item.name, item.phone, item.tax_code].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [items, search]);
-
   const formTitle = editingItem ? "Sửa nhà máy" : "Thêm nhà máy";
-
-  async function loadFactories() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("factories")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadFactories();
-  }, []);
 
   function startEdit(item: Factory) {
     setEditingItem(item);
@@ -140,10 +119,10 @@ export function FactoriesPage() {
       : await supabase.from("factories").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadFactories();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -162,10 +141,10 @@ export function FactoriesPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadFactories();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -281,13 +260,14 @@ export function FactoriesPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải nhà máy...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có nhà máy phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table wide-table">
                 <thead>
@@ -301,7 +281,7 @@ export function FactoriesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name}</td>
                       <td>{formatFactoryType(item.type)}</td>
@@ -335,15 +315,19 @@ export function FactoriesPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
     </section>
   );
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

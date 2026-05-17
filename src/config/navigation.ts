@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { branding } from "./branding";
 import {
   Banknote,
   Factory,
@@ -44,10 +45,6 @@ export const navigation: NavItem[] = [
   { to: "/exports", label: "Xuất file", icon: FileDown, accent: "#3d8f6a", pastel: "#e0f5ec" },
 ];
 
-const extraTitles: Record<string, string> = {
-  "/purchase-batches": "Đợt mua",
-};
-
 export function getNavTitle(pathname: string) {
   const exact = navigation.find((item) => item.to === pathname);
   if (exact) return exact.label;
@@ -57,11 +54,5 @@ export function getNavTitle(pathname: string) {
   );
   if (nested) return nested.label;
 
-  for (const [prefix, title] of Object.entries(extraTitles)) {
-    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
-      return title;
-    }
-  }
-
-  return "Quản lý lúa";
+  return branding.appName;
 }

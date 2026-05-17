@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type ProcessingRecord = Tables<"processing_records">;
 type TransportTrip = Tables<"transport_trips">;
@@ -65,13 +68,22 @@ const emptyValues: RecordFormValues = {
 };
 
 export function ProcessingRecordsPage() {
-  const [items, setItems] = useState<ProcessingRecordRow[]>([]);
+  const {
+    items: recordRows,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<ProcessingRecord>("processing_records");
   const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,75 +112,58 @@ export function ProcessingRecordsPage() {
     unitPrice: watchedUnitPrice,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
+  const tripMap = useMemo(() => new Map(transportTrips.map((trip) => [trip.id, trip])), [transportTrips]);
+  const factoryMap = useMemo(
+    () => new Map(factories.map((factory) => [factory.id, factory])),
+    [factories],
+  );
+  const seasonMap = useMemo(() => new Map(seasons.map((season) => [season.id, season])), [seasons]);
+  const riceTypeMap = useMemo(
+    () => new Map(riceTypes.map((riceType) => [riceType.id, riceType])),
+    [riceTypes],
+  );
 
-    return items.filter((item) =>
-      [
-        item.trip?.code,
-        item.factory?.name,
-        item.riceType?.name,
-        formatServiceType(item.service_type),
-      ].some((value) => normalize(value).includes(keyword)),
-    );
-  }, [items, search]);
-
-  const formTitle = editingItem ? "Sửa phiếu xử lý" : "Thêm phiếu xử lý";
-
-  async function loadData() {
-    setLoading(true);
-    setError(null);
-
-    const [recordsResult, tripsResult, factoriesResult, seasonsResult, riceTypesResult] =
-      await Promise.all([
-        supabase.from("processing_records").select("*").order("processed_date", { ascending: false }),
-        supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
-        supabase.from("factories").select("*").order("name", { ascending: true }),
-        supabase.from("seasons").select("*").order("from_date", { ascending: false }),
-        supabase.from("rice_types").select("*").order("name", { ascending: true }),
-      ]);
-
-    const firstError =
-      recordsResult.error ??
-      tripsResult.error ??
-      factoriesResult.error ??
-      seasonsResult.error ??
-      riceTypesResult.error;
-
-    if (firstError) {
-      setError(firstError.message);
-      setLoading(false);
-      return;
-    }
-
-    const tripRows = tripsResult.data ?? [];
-    const factoryRows = factoriesResult.data ?? [];
-    const seasonRows = seasonsResult.data ?? [];
-    const riceTypeRows = riceTypesResult.data ?? [];
-    const tripMap = new Map(tripRows.map((trip) => [trip.id, trip]));
-    const factoryMap = new Map(factoryRows.map((factory) => [factory.id, factory]));
-    const seasonMap = new Map(seasonRows.map((season) => [season.id, season]));
-    const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
-
-    setTransportTrips(tripRows);
-    setFactories(factoryRows);
-    setSeasons(seasonRows);
-    setRiceTypes(riceTypeRows);
-    setItems(
-      (recordsResult.data ?? []).map((record) => ({
+  const items = useMemo<ProcessingRecordRow[]>(
+    () =>
+      recordRows.map((record) => ({
         ...record,
         trip: tripMap.get(record.transport_trip_id) ?? null,
         factory: factoryMap.get(record.factory_id) ?? null,
         season: record.season_id ? seasonMap.get(record.season_id) ?? null : null,
         riceType: riceTypeMap.get(record.rice_type_id) ?? null,
       })),
-    );
-    setLoading(false);
+    [recordRows, tripMap, factoryMap, seasonMap, riceTypeMap],
+  );
+
+  const formTitle = editingItem ? "Sửa phiếu xử lý" : "Thêm phiếu xử lý";
+
+  async function loadReferenceData() {
+    const [tripsResult, factoriesResult, seasonsResult, riceTypesResult] = await Promise.all([
+      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
+      supabase.from("factories").select("*").order("name", { ascending: true }),
+      supabase.from("seasons").select("*").order("from_date", { ascending: false }),
+      supabase.from("rice_types").select("*").order("name", { ascending: true }),
+    ]);
+
+    const firstError =
+      tripsResult.error ??
+      factoriesResult.error ??
+      seasonsResult.error ??
+      riceTypesResult.error;
+
+    if (firstError) {
+      setError(formatDbError(firstError));
+      return;
+    }
+
+    setTransportTrips(tripsResult.data ?? []);
+    setFactories(factoriesResult.data ?? []);
+    setSeasons(seasonsResult.data ?? []);
+    setRiceTypes(riceTypesResult.data ?? []);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadReferenceData();
   }, []);
 
   useEffect(() => {
@@ -239,10 +234,10 @@ export function ProcessingRecordsPage() {
       : await supabase.from("processing_records").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadData();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -261,10 +256,10 @@ export function ProcessingRecordsPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadData();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -467,13 +462,14 @@ export function ProcessingRecordsPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải phiếu xử lý...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có phiếu xử lý phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
@@ -490,7 +486,7 @@ export function ProcessingRecordsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.trip?.code || "-"}</td>
                       <td>{formatDate(item.processed_date)}</td>
@@ -533,6 +529,14 @@ export function ProcessingRecordsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
@@ -590,10 +594,6 @@ function round4(value: number) {
 
 function formatServiceType(value: ServiceType) {
   return serviceTypeOptions.find((option) => option.value === value)?.label ?? value;
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

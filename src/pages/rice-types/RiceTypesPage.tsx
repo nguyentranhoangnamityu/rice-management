@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type RiceType = Tables<"rice_types">;
 
@@ -22,8 +25,18 @@ const emptyValues: RiceTypeFormValues = {
 };
 
 export function RiceTypesPage() {
-  const [items, setItems] = useState<RiceType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<RiceType>("rice_types");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,28 +57,6 @@ export function RiceTypesPage() {
     () => (editingItem ? "Sửa loại lúa" : "Thêm loại lúa"),
     [editingItem],
   );
-
-  async function loadRiceTypes() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("rice_types")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadRiceTypes();
-  }, []);
 
   function startEdit(item: RiceType) {
     setEditingItem(item);
@@ -96,10 +87,10 @@ export function RiceTypesPage() {
       : await supabase.from("rice_types").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadRiceTypes();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -118,12 +109,12 @@ export function RiceTypesPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) {
         clearForm();
       }
-      await loadRiceTypes();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -185,13 +176,25 @@ export function RiceTypesPage() {
         ) : null}
 
         <div className="table-card">
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          <div className="table-toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm theo tên, ghi chú"
+              />
+            </label>
+          </div>
+
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải loại lúa...</div>
           ) : items.length === 0 ? (
-            <div className="state-box">Chưa có loại lúa.</div>
+            <div className="state-box">Không có loại lúa phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -229,6 +232,14 @@ export function RiceTypesPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>

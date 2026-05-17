@@ -3,13 +3,18 @@ import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
 import { Edit2, FileText, Plus, Search, Trash2, X } from "lucide-react";
 import PizZip from "pizzip";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useForm } from "react-hook-form";
+import { useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import type { PurchaseSlipNavigationState } from "../../lib/purchase-slip-navigation";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type PurchaseSlip = Tables<"purchase_slips">;
 type Season = Tables<"seasons">;
@@ -70,16 +75,59 @@ const emptyValues: SlipFormValues = {
   note: "",
 };
 
+const slipQueryOptions = {
+  resolveSearchFilter: async (search: string) => {
+    const term = search.trim();
+    if (!term) return null;
+
+    const escaped = term.replace(/[%_,]/g, "");
+    if (!escaped) return null;
+
+    const pattern = `%${escaped}%`;
+    const [farmersResult, brokersResult] = await Promise.all([
+      supabase.from("farmers").select("id").or(`name.ilike.${pattern},phone.ilike.${pattern}`),
+      supabase.from("brokers").select("id").or(`name.ilike.${pattern},phone.ilike.${pattern}`),
+    ]);
+
+    const conditions = [`note.ilike.${pattern}`];
+    const farmerIds = (farmersResult.data ?? []).map((farmer) => farmer.id);
+    const brokerIds = (brokersResult.data ?? []).map((broker) => broker.id);
+
+    if (farmerIds.length > 0) {
+      conditions.push(`farmer_id.in.(${farmerIds.join(",")})`);
+    }
+    if (brokerIds.length > 0) {
+      conditions.push(`broker_id.in.(${brokerIds.join(",")})`);
+    }
+
+    return conditions.join(",");
+  },
+};
+
 export function PurchaseSlipsPage() {
-  const [items, setItems] = useState<SlipRow[]>([]);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pendingFarmerDraftRef = useRef<PurchaseSlipNavigationState | null>(null);
+  const [prefillFarmerName, setPrefillFarmerName] = useState<string | null>(null);
+  const {
+    items: slipRows,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<PurchaseSlip>("purchase_slips", { queryOptions: slipQueryOptions });
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
   const [authorizationLetters, setAuthorizationLetters] = useState<AuthorizationLetter[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [referenceLoading, setReferenceLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingContractId, setGeneratingContractId] = useState<string | null>(null);
@@ -179,85 +227,25 @@ export function PurchaseSlipsPage() {
     setActionMenu({ id: itemId, top, left });
   }
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
+  const seasonMap = useMemo(() => new Map(seasons.map((season) => [season.id, season])), [seasons]);
+  const farmerMap = useMemo(() => new Map(farmers.map((farmer) => [farmer.id, farmer])), [farmers]);
+  const brokerMap = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker])), [brokers]);
+  const transportTripMap = useMemo(
+    () => new Map(transportTrips.map((trip) => [trip.id, trip])),
+    [transportTrips],
+  );
+  const riceTypeMap = useMemo(
+    () => new Map(riceTypes.map((riceType) => [riceType.id, riceType])),
+    [riceTypes],
+  );
+  const authorizationLetterMap = useMemo(
+    () => new Map(authorizationLetters.map((letter) => [letter.id, letter])),
+    [authorizationLetters],
+  );
 
-    return items.filter((item) =>
-      [
-        item.farmer?.name,
-        item.farmer?.phone,
-        item.broker?.name,
-        item.broker?.phone,
-        item.transportTrip?.code,
-        item.riceType?.name,
-        item.note,
-      ].some((value) => normalize(value).includes(keyword)),
-    );
-  }, [items, search]);
-
-  const formTitle = editingItem ? "Sửa phiếu mua" : "Thêm phiếu mua";
-
-  async function loadData() {
-    setLoading(true);
-    setError(null);
-
-    const [
-      slipsResult,
-      seasonsResult,
-      farmersResult,
-      brokersResult,
-      transportTripsResult,
-      riceTypesResult,
-      authorizationLettersResult,
-    ] = await Promise.all([
-      supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
-      supabase.from("seasons").select("*").order("from_date", { ascending: false }),
-      supabase.from("farmers").select("*").order("name", { ascending: true }),
-      supabase.from("brokers").select("*").order("name", { ascending: true }),
-      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
-      supabase.from("rice_types").select("*").order("name", { ascending: true }),
-      supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
-    ]);
-
-    const firstError =
-      slipsResult.error ??
-      seasonsResult.error ??
-      farmersResult.error ??
-      brokersResult.error ??
-      transportTripsResult.error ??
-      riceTypesResult.error ??
-      authorizationLettersResult.error;
-
-    if (firstError) {
-      setError(firstError.message);
-      setLoading(false);
-      return;
-    }
-
-    const seasonRows = seasonsResult.data ?? [];
-    const farmerRows = farmersResult.data ?? [];
-    const brokerRows = brokersResult.data ?? [];
-    const transportTripRows = transportTripsResult.data ?? [];
-    const riceTypeRows = riceTypesResult.data ?? [];
-    const authorizationLetterRows = authorizationLettersResult.data ?? [];
-    const seasonMap = new Map(seasonRows.map((season) => [season.id, season]));
-    const farmerMap = new Map(farmerRows.map((farmer) => [farmer.id, farmer]));
-    const brokerMap = new Map(brokerRows.map((broker) => [broker.id, broker]));
-    const transportTripMap = new Map(transportTripRows.map((trip) => [trip.id, trip]));
-    const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
-    const authorizationLetterMap = new Map(
-      authorizationLetterRows.map((letter) => [letter.id, letter]),
-    );
-
-    setSeasons(seasonRows);
-    setFarmers(farmerRows);
-    setBrokers(brokerRows);
-    setTransportTrips(transportTripRows);
-    setRiceTypes(riceTypeRows);
-    setAuthorizationLetters(authorizationLetterRows);
-    setItems(
-      (slipsResult.data ?? []).map((slip) => ({
+  const items = useMemo<SlipRow[]>(
+    () =>
+      slipRows.map((slip) => ({
         ...slip,
         season: seasonMap.get(slip.season_id) ?? null,
         farmer: farmerMap.get(slip.farmer_id) ?? null,
@@ -271,13 +259,87 @@ export function PurchaseSlipsPage() {
           ? brokerMap.get(slip.authorized_receiver_broker_id) ?? null
           : null,
       })),
-    );
-    setLoading(false);
+    [
+      slipRows,
+      seasonMap,
+      farmerMap,
+      brokerMap,
+      transportTripMap,
+      riceTypeMap,
+      authorizationLetterMap,
+    ],
+  );
+
+  const formTitle = editingItem ? "Sửa phiếu mua" : "Thêm phiếu mua";
+
+  async function loadReferenceData() {
+    setReferenceLoading(true);
+
+    const [
+      seasonsResult,
+      farmersResult,
+      brokersResult,
+      transportTripsResult,
+      riceTypesResult,
+      authorizationLettersResult,
+    ] = await Promise.all([
+      supabase.from("seasons").select("*").order("from_date", { ascending: false }),
+      supabase.from("farmers").select("*").order("name", { ascending: true }),
+      supabase.from("brokers").select("*").order("name", { ascending: true }),
+      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
+      supabase.from("rice_types").select("*").order("name", { ascending: true }),
+      supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
+    ]);
+
+    const firstError =
+      seasonsResult.error ??
+      farmersResult.error ??
+      brokersResult.error ??
+      transportTripsResult.error ??
+      riceTypesResult.error ??
+      authorizationLettersResult.error;
+
+    if (firstError) {
+      setError(formatDbError(firstError));
+    } else {
+      setSeasons(seasonsResult.data ?? []);
+      setFarmers(farmersResult.data ?? []);
+      setBrokers(brokersResult.data ?? []);
+      setTransportTrips(transportTripsResult.data ?? []);
+      setRiceTypes(riceTypesResult.data ?? []);
+      setAuthorizationLetters(authorizationLettersResult.data ?? []);
+    }
+
+    setReferenceLoading(false);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadReferenceData();
   }, []);
+
+  useEffect(() => {
+    const state = location.state as PurchaseSlipNavigationState | null;
+    if (!state?.farmerId) return;
+
+    pendingFarmerDraftRef.current = state;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (loading || referenceLoading || !pendingFarmerDraftRef.current) return;
+
+    const draft = pendingFarmerDraftRef.current;
+    pendingFarmerDraftRef.current = null;
+
+    setEditingItem(null);
+    setPrefillFarmerName(draft.farmerName ?? null);
+    reset({
+      ...emptyValues,
+      farmer_id: draft.farmerId,
+      purchase_date: new Date().toISOString().slice(0, 10),
+    });
+    setFormOpen(true);
+  }, [loading, referenceLoading, reset]);
 
   function startEdit(item: SlipRow) {
     setEditingItem(item);
@@ -301,6 +363,7 @@ export function PurchaseSlipsPage() {
 
   function clearForm() {
     setEditingItem(null);
+    setPrefillFarmerName(null);
     reset(emptyValues);
     setFormOpen(false);
   }
@@ -340,10 +403,10 @@ export function PurchaseSlipsPage() {
       : await supabase.from("purchase_slips").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadData();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -362,10 +425,10 @@ export function PurchaseSlipsPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadData();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -463,6 +526,13 @@ export function PurchaseSlipsPage() {
               </button>
             ) : null}
           </div>
+
+          {prefillFarmerName && !editingItem ? (
+            <div className="farmer-scan-summary">
+              <strong>Nông dân: {prefillFarmerName}</strong>
+              <span>Đã chọn từ bước tạo nông dân — điền các thông tin còn lại.</span>
+            </div>
+          ) : null}
 
           <div className="field-grid">
             <label className="field">
@@ -631,13 +701,14 @@ export function PurchaseSlipsPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải phiếu mua...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có phiếu mua phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
@@ -655,7 +726,7 @@ export function PurchaseSlipsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{formatDate(item.purchase_date)}</td>
                       <td>{item.farmer?.name || "-"}</td>
@@ -758,6 +829,14 @@ export function PurchaseSlipsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>

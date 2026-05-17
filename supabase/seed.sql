@@ -216,23 +216,6 @@ on conflict (id) do update set
   valid_to = excluded.valid_to,
   note = excluded.note;
 
-insert into purchase_batches (id, code, season_id, from_date, to_date, note)
-values
-  (
-    '00000000-0000-4000-8000-000000000901',
-    'PB-2026-001',
-    '00000000-0000-4000-8000-000000000101',
-    '2026-02-01',
-    '2026-02-07',
-    'Seed purchase batch'
-  )
-on conflict (id) do update set
-  code = excluded.code,
-  season_id = excluded.season_id,
-  from_date = excluded.from_date,
-  to_date = excluded.to_date,
-  note = excluded.note;
-
 insert into transport_trips (
   id,
   code,
@@ -302,68 +285,55 @@ on conflict (id) do update set
   payment_status = excluded.payment_status,
   note = excluded.note;
 
-insert into purchase_items (
+insert into purchase_slips (
   id,
-  purchase_batch_id,
+  season_id,
   farmer_id,
   broker_id,
-  authorization_letter_id,
   transport_trip_id,
   rice_type_id,
+  authorization_letter_id,
+  purchase_date,
   weight_kg,
   unit_price,
   total_amount,
   broker_commission_per_kg,
   broker_commission_total,
-  farmer_payment_status,
+  payment_status,
   note
 )
 values
   (
     '00000000-0000-4000-8000-000000001101',
-    '00000000-0000-4000-8000-000000000901',
+    '00000000-0000-4000-8000-000000000101',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    '00000000-0000-4000-8000-000000000801',
     '00000000-0000-4000-8000-000000001001',
     '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000801',
+    '2026-02-08',
     10000,
     7200,
     72000000,
     50,
     500000,
     'paid',
-    'Seed purchase item assigned to transport trip'
-  ),
-  (
-    '00000000-0000-4000-8000-000000001102',
-    '00000000-0000-4000-8000-000000000901',
-    '00000000-0000-4000-8000-000000000302',
-    '00000000-0000-4000-8000-000000000401',
-    null,
-    '00000000-0000-4000-8000-000000001001',
-    '00000000-0000-4000-8000-000000000201',
-    7500,
-    7150,
-    53625000,
-    50,
-    375000,
-    'unpaid',
-    'Seed purchase item assigned to transport trip'
+    'Seed purchase slip'
   )
 on conflict (id) do update set
-  purchase_batch_id = excluded.purchase_batch_id,
+  season_id = excluded.season_id,
   farmer_id = excluded.farmer_id,
   broker_id = excluded.broker_id,
-  authorization_letter_id = excluded.authorization_letter_id,
   transport_trip_id = excluded.transport_trip_id,
   rice_type_id = excluded.rice_type_id,
+  authorization_letter_id = excluded.authorization_letter_id,
+  purchase_date = excluded.purchase_date,
   weight_kg = excluded.weight_kg,
   unit_price = excluded.unit_price,
   total_amount = excluded.total_amount,
   broker_commission_per_kg = excluded.broker_commission_per_kg,
   broker_commission_total = excluded.broker_commission_total,
-  farmer_payment_status = excluded.farmer_payment_status,
+  payment_status = excluded.payment_status,
   note = excluded.note;
 
 insert into processing_price_books (
@@ -451,7 +421,7 @@ insert into payments (
   id,
   payment_type,
   farmer_id,
-  purchase_item_id,
+  purchase_slip_id,
   amount,
   paid_date,
   method,
@@ -471,7 +441,7 @@ values
 on conflict (id) do update set
   payment_type = excluded.payment_type,
   farmer_id = excluded.farmer_id,
-  purchase_item_id = excluded.purchase_item_id,
+  purchase_slip_id = excluded.purchase_slip_id,
   amount = excluded.amount,
   paid_date = excluded.paid_date,
   method = excluded.method,
@@ -479,7 +449,7 @@ on conflict (id) do update set
 
 insert into attachments (
   id,
-  purchase_batch_id,
+  purchase_slip_id,
   file_name,
   file_path,
   file_type,
@@ -489,7 +459,7 @@ insert into attachments (
 values
   (
     '00000000-0000-4000-8000-000000001501',
-    '00000000-0000-4000-8000-000000000901',
+    '00000000-0000-4000-8000-000000001101',
     'seed-transfer-receipt.txt',
     'seed/seed-transfer-receipt.txt',
     'text/plain',
@@ -497,7 +467,7 @@ values
     'transfer_receipt'
   )
 on conflict (id) do update set
-  purchase_batch_id = excluded.purchase_batch_id,
+  purchase_slip_id = excluded.purchase_slip_id,
   file_name = excluded.file_name,
   file_path = excluded.file_path,
   file_type = excluded.file_type,

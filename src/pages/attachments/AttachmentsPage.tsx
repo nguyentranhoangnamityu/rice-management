@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables, TablesInsert } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 const DOCUMENTS_BUCKET = "documents";
 
@@ -16,15 +19,13 @@ type Debt = Tables<"debts">;
 type Farmer = Tables<"farmers">;
 type Payment = Tables<"payments">;
 type ProcessingRecord = Tables<"processing_records">;
-type PurchaseBatch = Tables<"purchase_batches">;
-type PurchaseItem = Tables<"purchase_items">;
+type PurchaseSlip = Tables<"purchase_slips">;
 type TransportTrip = Tables<"transport_trips">;
 
 type ParentType =
   | "farmer"
   | "authorization_letter"
-  | "purchase_batch"
-  | "purchase_item"
+  | "purchase_slip"
   | "transport_trip"
   | "processing_record"
   | "payment"
@@ -49,8 +50,7 @@ const attachmentTypeOptions: { value: AttachmentType; label: string }[] = [
 const parentTypeOptions: { value: ParentType; label: string }[] = [
   { value: "farmer", label: "Nông dân" },
   { value: "authorization_letter", label: "Giấy ủy quyền" },
-  { value: "purchase_batch", label: "Đợt mua" },
-  { value: "purchase_item", label: "Phiếu mua" },
+  { value: "purchase_slip", label: "Phiếu mua" },
   { value: "transport_trip", label: "Chuyến ghe" },
   { value: "processing_record", label: "Phiếu xử lý" },
   { value: "payment", label: "Thanh toán" },
@@ -60,8 +60,7 @@ const parentTypeOptions: { value: ParentType; label: string }[] = [
 const parentColumnByType: Record<ParentType, keyof Attachment> = {
   farmer: "farmer_id",
   authorization_letter: "authorization_letter_id",
-  purchase_batch: "purchase_batch_id",
-  purchase_item: "purchase_item_id",
+  purchase_slip: "purchase_slip_id",
   transport_trip: "transport_trip_id",
   processing_record: "processing_record_id",
   payment: "payment_id",
@@ -72,8 +71,7 @@ const formSchema = z.object({
   parent_type: z.enum([
     "farmer",
     "authorization_letter",
-    "purchase_batch",
-    "purchase_item",
+    "purchase_slip",
     "transport_trip",
     "processing_record",
     "payment",
@@ -101,19 +99,29 @@ const emptyValues: FormValues = {
 };
 
 export function AttachmentsPage() {
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const {
+    items: attachments,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<Attachment>("attachments");
   const [parentOptions, setParentOptions] = useState<Record<ParentType, ParentOption[]>>({
     farmer: [],
     authorization_letter: [],
-    purchase_batch: [],
-    purchase_item: [],
+    purchase_slip: [],
     transport_trip: [],
     processing_record: [],
     payment: [],
     debt: [],
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [referenceLoading, setReferenceLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,26 +152,22 @@ export function AttachmentsPage() {
     return map;
   }, [parentOptions]);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadReferenceData() {
+    setReferenceLoading(true);
     setError(null);
 
     const [
-      attachmentsResult,
       farmersResult,
       lettersResult,
-      batchesResult,
-      itemsResult,
+      slipsResult,
       tripsResult,
       recordsResult,
       paymentsResult,
       debtsResult,
     ] = await Promise.all([
-      supabase.from("attachments").select("*").order("uploaded_at", { ascending: false }),
       supabase.from("farmers").select("*").order("name", { ascending: true }),
       supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
-      supabase.from("purchase_batches").select("*").order("from_date", { ascending: false }),
-      supabase.from("purchase_items").select("*").order("created_at", { ascending: false }),
+      supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
       supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
       supabase.from("processing_records").select("*").order("processed_date", { ascending: false }),
       supabase.from("payments").select("*").order("paid_date", { ascending: false }),
@@ -171,23 +175,20 @@ export function AttachmentsPage() {
     ]);
 
     const firstError =
-      attachmentsResult.error ??
       farmersResult.error ??
       lettersResult.error ??
-      batchesResult.error ??
-      itemsResult.error ??
+      slipsResult.error ??
       tripsResult.error ??
       recordsResult.error ??
       paymentsResult.error ??
       debtsResult.error;
 
     if (firstError) {
-      setError(firstError.message);
-      setLoading(false);
+      setError(formatDbError(firstError));
+      setReferenceLoading(false);
       return;
     }
 
-    setAttachments(attachmentsResult.data ?? []);
     setParentOptions({
       farmer: (farmersResult.data ?? []).map((farmer: Farmer) => ({
         id: farmer.id,
@@ -197,13 +198,9 @@ export function AttachmentsPage() {
         id: letter.id,
         label: `Giấy ủy quyền ${letter.signed_date ? formatDate(letter.signed_date) : letter.id.slice(0, 8)}`,
       })),
-      purchase_batch: (batchesResult.data ?? []).map((batch: PurchaseBatch) => ({
-        id: batch.id,
-        label: batch.code,
-      })),
-      purchase_item: (itemsResult.data ?? []).map((item: PurchaseItem) => ({
-        id: item.id,
-        label: `Phiếu mua ${formatNumber(item.weight_kg)} kg - ${formatMoney(item.total_amount)}`,
+      purchase_slip: (slipsResult.data ?? []).map((slip: PurchaseSlip) => ({
+        id: slip.id,
+        label: `Phiếu mua ${formatDate(slip.purchase_date)} - ${formatNumber(slip.weight_kg)} kg`,
       })),
       transport_trip: (tripsResult.data ?? []).map((trip: TransportTrip) => ({
         id: trip.id,
@@ -222,11 +219,11 @@ export function AttachmentsPage() {
         label: `${formatDebtType(debt.debt_type)} - ${formatMoney(debt.amount)}`,
       })),
     });
-    setLoading(false);
+    setReferenceLoading(false);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadReferenceData();
   }, []);
 
   useEffect(() => {
@@ -259,7 +256,7 @@ export function AttachmentsPage() {
       });
 
     if (uploadError) {
-      setError(uploadError.message);
+      setError(formatDbError(uploadError));
       setSaving(false);
       return;
     }
@@ -267,8 +264,7 @@ export function AttachmentsPage() {
     const metadata: TablesInsert<"attachments"> = {
       farmer_id: null,
       authorization_letter_id: null,
-      purchase_batch_id: null,
-      purchase_item_id: null,
+      purchase_slip_id: null,
       transport_trip_id: null,
       processing_record_id: null,
       payment_id: null,
@@ -285,11 +281,11 @@ export function AttachmentsPage() {
 
     if (insertError) {
       await supabase.storage.from(DOCUMENTS_BUCKET).remove([filePath]);
-      setError(insertError.message);
+      setError(formatDbError(insertError));
     } else {
       clearForm();
       setFormOpen(false);
-      await loadData();
+      await refresh(1);
     }
 
     setSaving(false);
@@ -322,7 +318,7 @@ export function AttachmentsPage() {
       .remove([attachment.file_path]);
 
     if (storageError) {
-      setError(storageError.message);
+      setError(formatDbError(storageError));
       setDeletingId(null);
       return;
     }
@@ -333,9 +329,9 @@ export function AttachmentsPage() {
       .eq("id", attachment.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
-      await loadData();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -443,13 +439,24 @@ export function AttachmentsPage() {
         ) : null}
 
         <div className="table-card">
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          <div className="table-toolbar">
+            <label className="search-field">
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm theo tên file"
+              />
+            </label>
+          </div>
 
-          {loading ? (
+          {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
+
+          {loading || referenceLoading ? (
             <div className="state-box">Đang tải chứng từ...</div>
           ) : attachments.length === 0 ? (
             <div className="state-box">Chưa có chứng từ.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
@@ -505,6 +512,14 @@ export function AttachmentsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
@@ -539,8 +554,7 @@ function setAttachmentParentId(
 ) {
   if (parentType === "farmer") metadata.farmer_id = parentId;
   if (parentType === "authorization_letter") metadata.authorization_letter_id = parentId;
-  if (parentType === "purchase_batch") metadata.purchase_batch_id = parentId;
-  if (parentType === "purchase_item") metadata.purchase_item_id = parentId;
+  if (parentType === "purchase_slip") metadata.purchase_slip_id = parentId;
   if (parentType === "transport_trip") metadata.transport_trip_id = parentId;
   if (parentType === "processing_record") metadata.processing_record_id = parentId;
   if (parentType === "payment") metadata.payment_id = parentId;

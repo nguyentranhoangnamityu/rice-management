@@ -13,9 +13,6 @@ import { FactoriesPage } from "../pages/factories/FactoriesPage";
 import { FarmersPage } from "../pages/farmers/FarmersPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { ProcessingRecordsPage } from "../pages/processing-records/ProcessingRecordsPage";
-import { PurchaseBatchDetailPage } from "../pages/purchase-batches/PurchaseBatchDetailPage";
-import { PurchaseBatchesPage } from "../pages/purchase-batches/PurchaseBatchesPage";
-import { PurchaseItemsPage } from "../pages/purchase-items/PurchaseItemsPage";
 import { PurchaseSlipsPage } from "../pages/purchase-slips/PurchaseSlipsPage";
 import { RiceTypesPage } from "../pages/rice-types/RiceTypesPage";
 import { SeasonsPage } from "../pages/seasons/SeasonsPage";
@@ -38,9 +35,6 @@ export function AppRouter() {
           <Route path="brokers" element={<BrokersPage />} />
           <Route path="purchase-slips" element={<PurchaseSlipsPage />} />
           <Route path="authorization-letters" element={<AuthorizationLettersPage />} />
-          <Route path="purchase-batches" element={<PurchaseBatchesPage />} />
-          <Route path="purchase-batches/:batchId" element={<PurchaseBatchDetailPage />} />
-          <Route path="purchase-items" element={<PurchaseItemsPage />} />
           <Route path="transporter-boats" element={<TransporterBoatsPage />} />
           <Route path="transport-trips" element={<TransportTripsPage />} />
           <Route path="transport-routes" element={<TransportRoutesPage />} />

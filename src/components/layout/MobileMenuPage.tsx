@@ -2,7 +2,9 @@ import { LogOut } from "lucide-react";
 import type { CSSProperties } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { branding } from "../../config/branding";
 import { navigation } from "../../config/navigation";
+import { AppBrand } from "./AppBrand";
 
 export function MobileMenuPage() {
   const { signOut } = useAuth();
@@ -16,11 +18,7 @@ export function MobileMenuPage() {
   return (
     <div className="mobile-menu" role="main">
       <header className="mobile-menu-header">
-        <div className="brand-mark mobile-menu-mark">RM</div>
-        <div>
-          <h1>Quản lý lúa</h1>
-          <p>Chọn chức năng để bắt đầu</p>
-        </div>
+        <AppBrand variant="mobile" />
       </header>
 
       <nav className="mobile-menu-grid" aria-label="Menu chức năng">
@@ -46,6 +44,7 @@ export function MobileMenuPage() {
       </nav>
 
       <footer className="mobile-menu-footer">
+        <p className="mobile-menu-company">{branding.companyName}</p>
         <button className="mobile-menu-logout" type="button" onClick={() => void handleLogout()}>
           <LogOut aria-hidden="true" size={20} strokeWidth={2} />
           <span>Đăng xuất</span>

@@ -2,15 +2,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { BarcodeFormat, BrowserQRCodeReader } from "@zxing/browser";
 import { DecodeHintType } from "@zxing/library";
 import { Camera, Edit2, ImageUp, PenLine, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 import QrScanner from "qr-scanner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useServerPagination } from "../../hooks/useServerPagination";
+import { buildPurchaseSlipFromFarmerState } from "../../lib/purchase-slip-navigation";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
+import { formatDeleteBlockersMessage, getFarmerDeleteBlockers } from "../../lib/entity-delete-blockers";
 
 type Farmer = Tables<"farmers">;
 
@@ -85,10 +91,20 @@ function RequiredLabel({ children }: { children: string }) {
 }
 
 export function FarmersPage() {
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const [items, setItems] = useState<Farmer[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<Farmer>("farmers");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +115,7 @@ export function FarmersPage() {
   const [parsedCitizenQr, setParsedCitizenQr] = useState<ParsedCitizenQr | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formStep, setFormStep] = useState<FarmerFormStep>("entry");
+  const [createdFarmerPrompt, setCreatedFarmerPrompt] = useState<Farmer | null>(null);
 
   const {
     register,
@@ -112,44 +129,11 @@ export function FarmersPage() {
     defaultValues: emptyValues,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
-
-    return items.filter((item) =>
-      [item.name, item.phone, item.citizen_id].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [items, search]);
-
   const formTitle = editingItem ? "Sửa nông dân" : "Thêm nông dân";
   const isMobileAddFlow = isMobile && !editingItem;
   const showScanStep = isMobileAddFlow && formStep === "scan";
   const showEntryStep = !isMobileAddFlow || formStep === "entry";
   const showDesktopScanner = !isMobileAddFlow && scannerOpen;
-
-  async function loadFarmers() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("farmers")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadFarmers();
-  }, []);
 
   function startEdit(item: Farmer) {
     setEditingItem(item);
@@ -227,21 +211,51 @@ export function FarmersPage() {
       note: toNullable(values.note),
     };
 
-    const result = editingItem
-      ? await supabase.from("farmers").update(payload).eq("id", editingItem.id)
-      : await supabase.from("farmers").insert(payload);
-
-    if (result.error) {
-      setError(result.error.message);
+    if (editingItem) {
+      const result = await supabase.from("farmers").update(payload).eq("id", editingItem.id);
+      if (result.error) {
+        setError(formatDbError(result.error));
+      } else {
+        clearForm();
+        await refresh(page);
+      }
     } else {
-      clearForm();
-      await loadFarmers();
+      const result = await supabase.from("farmers").insert(payload).select("*").single();
+      if (result.error) {
+        setError(formatDbError(result.error));
+      } else {
+        const createdFarmer = result.data;
+        clearForm();
+        await refresh(1);
+        setCreatedFarmerPrompt(createdFarmer);
+      }
     }
 
     setSaving(false);
   }
 
+  function goToCreatePurchaseSlip(farmer: Farmer) {
+    setCreatedFarmerPrompt(null);
+    navigate("/purchase-slips", {
+      state: buildPurchaseSlipFromFarmerState(farmer),
+    });
+  }
+
   async function deleteItem(item: Farmer) {
+    setError(null);
+
+    try {
+      const blockers = await getFarmerDeleteBlockers(item.id);
+      if (blockers.length > 0) {
+        setError(formatDeleteBlockersMessage(blockers));
+        return;
+      }
+    } catch (checkError) {
+      const message = checkError instanceof Error ? checkError.message : "Không thể kiểm tra dữ liệu liên quan";
+      setError(formatDbError({ message }));
+      return;
+    }
+
     const confirmed = window.confirm(`Xóa nông dân "${item.name}"?`);
     if (!confirmed) return;
 
@@ -254,12 +268,12 @@ export function FarmersPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) {
         clearForm();
       }
-      await loadFarmers();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -527,45 +541,44 @@ export function FarmersPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải nông dân...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có nông dân phù hợp.</div>
           ) : (
             <>
               <div className="farmers-mobile-list">
-                {filteredItems.map((item) => (
+                {items.map((item) => (
                   <article key={`mobile-${item.id}`} className="farmer-mobile-card">
-                    <div className="farmer-mobile-title">
-                      <strong>{item.name}</strong>
-                      <span>CCCD: {item.citizen_id || "-"}</span>
+                    <div className="farmer-mobile-body">
+                      <strong className="farmer-mobile-name">{item.name}</strong>
+                      <p className="farmer-mobile-line">
+                        <span>{item.phone || "Chưa có SĐT"}</span>
+                        <span className="farmer-mobile-dot" aria-hidden="true">
+                          ·
+                        </span>
+                        <span>{item.citizen_id ? `CCCD ${item.citizen_id}` : "Chưa có CCCD"}</span>
+                      </p>
                     </div>
-
-                    <div className="farmer-mobile-details">
-                      <small>Ngày sinh: {formatDateValue(item.date_of_birth)}</small>
-                      <small>Giới tính: {item.gender || "-"}</small>
-                      <small>Thường trú: {item.permanent_address || "-"}</small>
-                      <small>Điện thoại: {item.phone || "-"}</small>
-                      <small>Ngân hàng: {item.bank_name || "-"}</small>
-                      <small>Số TK: {item.bank_account_number || "-"}</small>
-                      {item.bank_account_name ? <small>Tên TK: {item.bank_account_name}</small> : null}
-                    </div>
-
-                    <div className="row-actions mobile-actions">
-                      <button className="secondary-button" type="button" onClick={() => startEdit(item)}>
-                        <Edit2 size={16} aria-hidden="true" />
-                        Sửa
+                    <div className="farmer-mobile-actions">
+                      <button
+                        className="icon-button"
+                        type="button"
+                        onClick={() => startEdit(item)}
+                        aria-label={`Sửa ${item.name}`}
+                      >
+                        <Edit2 size={17} aria-hidden="true" />
                       </button>
                       <button
-                        className="secondary-button danger-action"
+                        className="icon-button danger"
                         type="button"
                         onClick={() => void deleteItem(item)}
                         disabled={deletingId === item.id}
+                        aria-label={`Xóa ${item.name}`}
                       >
-                        <Trash2 size={16} aria-hidden="true" />
-                        Xóa
+                        <Trash2 size={17} aria-hidden="true" />
                       </button>
                     </div>
                   </article>
@@ -588,7 +601,7 @@ export function FarmersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredItems.map((item) => (
+                    {items.map((item) => (
                       <tr key={item.id}>
                         <td>{item.name}</td>
                         <td>{item.phone || "-"}</td>
@@ -622,10 +635,38 @@ export function FarmersPage() {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+              />
             </>
           )}
         </div>
       </div>
+
+      {createdFarmerPrompt ? (
+        <ModalShell onClose={() => setCreatedFarmerPrompt(null)}>
+          <div className="form-card post-create-prompt">
+            <h2>Đã thêm nông dân</h2>
+            <p>
+              Đã lưu <strong>{createdFarmerPrompt.name}</strong>. Bạn có muốn tạo phiếu mua cho nông dân này ngay
+              không?
+            </p>
+            <div className="post-create-actions">
+              <Button type="button" onClick={() => goToCreatePurchaseSlip(createdFarmerPrompt)}>
+                <Plus size={18} aria-hidden="true" />
+                Tạo phiếu mua
+              </Button>
+              <Button variant="secondary" type="button" onClick={() => setCreatedFarmerPrompt(null)}>
+                Để sau
+              </Button>
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }
@@ -1759,10 +1800,6 @@ function formatScannerError(error: unknown) {
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function formatDateValue(value: string | null | undefined) {

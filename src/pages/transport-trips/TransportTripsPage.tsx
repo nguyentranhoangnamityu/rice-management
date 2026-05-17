@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type TransportTrip = Tables<"transport_trips">;
 type TransporterBoat = Tables<"transporter_boats">;
@@ -92,7 +95,18 @@ const emptyValues: TripFormValues = {
 };
 
 export function TransportTripsPage() {
-  const [items, setItems] = useState<TripRow[]>([]);
+  const {
+    items: tripRows,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<TransportTrip>("transport_trips");
   const [boats, setBoats] = useState<TransporterBoat[]>([]);
   const [routes, setRoutes] = useState<RouteWithStops[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
@@ -100,8 +114,6 @@ export function TransportTripsPage() {
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
   const [purchaseSlips, setPurchaseSlips] = useState<PurchaseSlipAssignment[]>([]);
   const [assigningItemId, setAssigningItemId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,21 +149,27 @@ export function TransportTripsPage() {
     weighingFee: watchedWeighingFee,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
+  const boatMap = useMemo(() => new Map(boats.map((boat) => [boat.id, boat])), [boats]);
+  const routeMap = useMemo(() => new Map(routes.map((route) => [route.id, route])), [routes]);
+  const factoryMap = useMemo(() => new Map(factories.map((factory) => [factory.id, factory])), [factories]);
+  const seasonMap = useMemo(() => new Map(seasons.map((season) => [season.id, season])), [seasons]);
+  const riceTypeMap = useMemo(
+    () => new Map(riceTypes.map((riceType) => [riceType.id, riceType])),
+    [riceTypes],
+  );
 
-    return items.filter((item) =>
-      [
-        item.code,
-        item.boat?.boat_name,
-        item.boat?.owner_name,
-        item.route?.name,
-        item.factory?.name,
-        item.riceType?.name,
-      ].some((value) => normalize(value).includes(keyword)),
-    );
-  }, [items, search]);
+  const items = useMemo<TripRow[]>(
+    () =>
+      tripRows.map((trip) => ({
+        ...trip,
+        boat: boatMap.get(trip.transporter_boat_id) ?? null,
+        route: routeMap.get(trip.route_id) ?? null,
+        factory: trip.factory_id ? factoryMap.get(trip.factory_id) ?? null : null,
+        season: trip.season_id ? seasonMap.get(trip.season_id) ?? null : null,
+        riceType: riceTypeMap.get(trip.rice_type_id) ?? null,
+      })),
+    [tripRows, boatMap, routeMap, factoryMap, seasonMap, riceTypeMap],
+  );
 
   const formTitle = editingItem ? "Sửa chuyến ghe" : "Thêm chuyến ghe";
   const assignablePurchaseSlips = useMemo(() => {
@@ -174,12 +192,8 @@ export function TransportTripsPage() {
     ? assignedPurchaseWeight - watchedLoadedWeight
     : 0;
 
-  async function loadData() {
-    setLoading(true);
-    setError(null);
-
+  async function loadReferenceData() {
     const [
-      tripsResult,
       boatsResult,
       routesResult,
       factoriesResult,
@@ -188,21 +202,18 @@ export function TransportTripsPage() {
       purchaseSlipsResult,
       farmersResult,
       brokersResult,
-    ] =
-      await Promise.all([
-        supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
-        supabase.from("transporter_boats").select("*").order("boat_name", { ascending: true }),
-        supabase.from("transport_routes").select("*").order("name", { ascending: true }),
-        supabase.from("factories").select("*").order("name", { ascending: true }),
-        supabase.from("seasons").select("*").order("from_date", { ascending: false }),
-        supabase.from("rice_types").select("*").order("name", { ascending: true }),
-        supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
-        supabase.from("farmers").select("*").order("name", { ascending: true }),
-        supabase.from("brokers").select("*").order("name", { ascending: true }),
-      ]);
+    ] = await Promise.all([
+      supabase.from("transporter_boats").select("*").order("boat_name", { ascending: true }),
+      supabase.from("transport_routes").select("*").order("name", { ascending: true }),
+      supabase.from("factories").select("*").order("name", { ascending: true }),
+      supabase.from("seasons").select("*").order("from_date", { ascending: false }),
+      supabase.from("rice_types").select("*").order("name", { ascending: true }),
+      supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
+      supabase.from("farmers").select("*").order("name", { ascending: true }),
+      supabase.from("brokers").select("*").order("name", { ascending: true }),
+    ]);
 
     const firstError =
-      tripsResult.error ??
       boatsResult.error ??
       routesResult.error ??
       factoriesResult.error ??
@@ -213,8 +224,7 @@ export function TransportTripsPage() {
       brokersResult.error;
 
     if (firstError) {
-      setError(firstError.message);
-      setLoading(false);
+      setError(formatDbError(firstError));
       return;
     }
 
@@ -230,8 +240,7 @@ export function TransportTripsPage() {
         .order("stop_order", { ascending: true });
 
       if (stopsError) {
-        setError(stopsError.message);
-        setLoading(false);
+        setError(formatDbError(stopsError));
         return;
       }
 
@@ -243,48 +252,30 @@ export function TransportTripsPage() {
       stops: stopRows.filter((stop) => stop.route_id === route.id),
     }));
 
-    const boatRows = boatsResult.data ?? [];
-    const factoryRows = factoriesResult.data ?? [];
-    const seasonRows = seasonsResult.data ?? [];
     const riceTypeRows = riceTypesResult.data ?? [];
     const farmerRows = farmersResult.data ?? [];
     const brokerRows = brokersResult.data ?? [];
-    const boatMap = new Map(boatRows.map((boat) => [boat.id, boat]));
-    const routeMap = new Map(routeRowsWithStops.map((route) => [route.id, route]));
-    const factoryMap = new Map(factoryRows.map((factory) => [factory.id, factory]));
-    const seasonMap = new Map(seasonRows.map((season) => [season.id, season]));
-    const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
     const farmerMap = new Map(farmerRows.map((farmer) => [farmer.id, farmer]));
     const brokerMap = new Map(brokerRows.map((broker) => [broker.id, broker]));
+    const riceTypeMapRef = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
 
-    setBoats(boatRows);
+    setBoats(boatsResult.data ?? []);
     setRoutes(routeRowsWithStops);
-    setFactories(factoryRows);
-    setSeasons(seasonRows);
+    setFactories(factoriesResult.data ?? []);
+    setSeasons(seasonsResult.data ?? []);
     setRiceTypes(riceTypeRows);
     setPurchaseSlips(
       (purchaseSlipsResult.data ?? []).map((item) => ({
         ...item,
         farmer: farmerMap.get(item.farmer_id) ?? null,
         broker: brokerMap.get(item.broker_id) ?? null,
-        riceType: riceTypeMap.get(item.rice_type_id) ?? null,
+        riceType: riceTypeMapRef.get(item.rice_type_id) ?? null,
       })),
     );
-    setItems(
-      (tripsResult.data ?? []).map((trip) => ({
-        ...trip,
-        boat: boatMap.get(trip.transporter_boat_id) ?? null,
-        route: routeMap.get(trip.route_id) ?? null,
-        factory: trip.factory_id ? factoryMap.get(trip.factory_id) ?? null : null,
-        season: trip.season_id ? seasonMap.get(trip.season_id) ?? null : null,
-        riceType: riceTypeMap.get(trip.rice_type_id) ?? null,
-      })),
-    );
-    setLoading(false);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadReferenceData();
   }, []);
 
   function startEdit(item: TripRow) {
@@ -358,10 +349,10 @@ export function TransportTripsPage() {
       : await supabase.from("transport_trips").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadData();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -380,10 +371,10 @@ export function TransportTripsPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadData();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -402,9 +393,9 @@ export function TransportTripsPage() {
       .eq("id", item.id);
 
     if (assignmentError) {
-      setError(assignmentError.message);
+      setError(formatDbError(assignmentError));
     } else {
-      await loadData();
+      await loadReferenceData();
     }
 
     setAssigningItemId(null);
@@ -733,13 +724,14 @@ export function TransportTripsPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải chuyến ghe...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có chuyến ghe phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
@@ -756,7 +748,7 @@ export function TransportTripsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.code}</td>
                       <td>{formatDate(item.trip_date)}</td>
@@ -802,6 +794,14 @@ export function TransportTripsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
@@ -886,10 +886,6 @@ function formatRoutePath(stops: TransportRouteStop[]) {
 
 function formatPaymentStatus(value: PaymentStatus) {
   return paymentStatusOptions.find((option) => option.value === value)?.label ?? value;
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

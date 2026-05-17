@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit2, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type Season = Tables<"seasons">;
 
@@ -37,8 +40,16 @@ const emptyValues: SeasonFormValues = {
 };
 
 export function SeasonsPage() {
-  const [items, setItems] = useState<Season[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<Season>("seasons");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,29 +70,6 @@ export function SeasonsPage() {
     () => (editingItem ? "Sửa mùa vụ" : "Thêm mùa vụ"),
     [editingItem],
   );
-
-  async function loadSeasons() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("seasons")
-      .select("*")
-      .order("from_date", { ascending: false, nullsFirst: false })
-      .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadSeasons();
-  }, []);
 
   function startEdit(item: Season) {
     setEditingItem(item);
@@ -116,10 +104,10 @@ export function SeasonsPage() {
       : await supabase.from("seasons").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadSeasons();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -138,12 +126,12 @@ export function SeasonsPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) {
         clearForm();
       }
-      await loadSeasons();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -154,7 +142,7 @@ export function SeasonsPage() {
       <header className="page-header">
         <div>
           <h1>Mùa vụ</h1>
-          <p>Quản lý các mùa vụ để gom đợt mua, bảng giá xử lý và công nợ.</p>
+          <p>Quản lý các mùa vụ để gom phiếu mua, bảng giá xử lý và công nợ.</p>
         </div>
         <div className="header-actions">
           <button
@@ -218,13 +206,14 @@ export function SeasonsPage() {
         ) : null}
 
         <div className="table-card">
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải mùa vụ...</div>
           ) : items.length === 0 ? (
             <div className="state-box">Chưa có mùa vụ.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
@@ -262,6 +251,14 @@ export function SeasonsPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>

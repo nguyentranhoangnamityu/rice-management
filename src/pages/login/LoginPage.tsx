@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
+import { AppBrand } from "../../components/layout/AppBrand";
 import { useAuth } from "../../auth/AuthProvider";
 import { supabase } from "../../lib/supabase";
 
@@ -67,13 +68,7 @@ export function LoginPage() {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={handleSubmit(onSubmit)}>
-        <div className="brand auth-brand">
-          <div className="brand-mark">RM</div>
-          <div>
-            <strong>Quản lý lúa</strong>
-            <span>Đăng nhập hệ thống</span>
-          </div>
-        </div>
+        <AppBrand variant="auth" />
 
         {submitError ? <div className="alert error-alert">{submitError}</div> : null}
 

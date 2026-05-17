@@ -1,11 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type Broker = Tables<"brokers">;
 
@@ -38,9 +41,18 @@ const emptyValues: BrokerFormValues = {
 };
 
 export function BrokersPage() {
-  const [items, setItems] = useState<Broker[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {
+    items,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<Broker>("brokers");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,40 +69,7 @@ export function BrokersPage() {
     defaultValues: emptyValues,
   });
 
-  const filteredItems = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return items;
-
-    return items.filter((item) =>
-      [item.name, item.phone, item.citizen_id].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [items, search]);
-
   const formTitle = editingItem ? "Sửa cò lúa" : "Thêm cò lúa";
-
-  async function loadBrokers() {
-    setLoading(true);
-    setError(null);
-
-    const { data, error: loadError } = await supabase
-      .from("brokers")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (loadError) {
-      setError(loadError.message);
-    } else {
-      setItems(data ?? []);
-    }
-
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    void loadBrokers();
-  }, []);
 
   function startEdit(item: Broker) {
     setEditingItem(item);
@@ -135,10 +114,10 @@ export function BrokersPage() {
       : await supabase.from("brokers").insert(payload);
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
     } else {
       clearForm();
-      await loadBrokers();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -157,12 +136,12 @@ export function BrokersPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) {
         clearForm();
       }
-      await loadBrokers();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -280,13 +259,14 @@ export function BrokersPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error || listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải cò lúa...</div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="state-box">Không có cò lúa phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table wide-table">
                 <thead>
@@ -300,7 +280,7 @@ export function BrokersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => (
+                  {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name}</td>
                       <td>{item.phone || "-"}</td>
@@ -334,15 +314,19 @@ export function BrokersPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
     </section>
   );
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {

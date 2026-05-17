@@ -14,8 +14,7 @@ export type Database = {
           id: string;
           farmer_id: string | null;
           authorization_letter_id: string | null;
-          purchase_batch_id: string | null;
-          purchase_item_id: string | null;
+          purchase_slip_id: string | null;
           transport_trip_id: string | null;
           processing_record_id: string | null;
           payment_id: string | null;
@@ -33,8 +32,7 @@ export type Database = {
           id?: string;
           farmer_id?: string | null;
           authorization_letter_id?: string | null;
-          purchase_batch_id?: string | null;
-          purchase_item_id?: string | null;
+          purchase_slip_id?: string | null;
           transport_trip_id?: string | null;
           processing_record_id?: string | null;
           payment_id?: string | null;
@@ -252,7 +250,7 @@ export type Database = {
           transporter_boat_id: string | null;
           factory_id: string | null;
           debt_id: string | null;
-          purchase_item_id: string | null;
+          purchase_slip_id: string | null;
           amount: number;
           paid_date: string;
           method: Database["public"]["Enums"]["payment_method"];
@@ -268,7 +266,7 @@ export type Database = {
           transporter_boat_id?: string | null;
           factory_id?: string | null;
           debt_id?: string | null;
-          purchase_item_id?: string | null;
+          purchase_slip_id?: string | null;
           amount: number;
           paid_date: string;
           method: Database["public"]["Enums"]["payment_method"];
@@ -347,70 +345,6 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["processing_records"]["Insert"]>;
-        Relationships: [];
-      };
-      purchase_batches: {
-        Row: {
-          id: string;
-          code: string;
-          season_id: string | null;
-          from_date: string;
-          to_date: string;
-          note: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          code: string;
-          season_id?: string | null;
-          from_date: string;
-          to_date: string;
-          note?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["purchase_batches"]["Insert"]>;
-        Relationships: [];
-      };
-      purchase_items: {
-        Row: {
-          id: string;
-          purchase_batch_id: string;
-          farmer_id: string;
-          broker_id: string;
-          authorization_letter_id: string | null;
-          transport_trip_id: string | null;
-          rice_type_id: string;
-          weight_kg: number;
-          unit_price: number;
-          total_amount: number;
-          broker_commission_per_kg: number;
-          broker_commission_total: number;
-          farmer_payment_status: Database["public"]["Enums"]["payment_status"];
-          note: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          purchase_batch_id: string;
-          farmer_id: string;
-          broker_id: string;
-          authorization_letter_id?: string | null;
-          transport_trip_id?: string | null;
-          rice_type_id: string;
-          weight_kg: number;
-          unit_price: number;
-          total_amount?: number;
-          broker_commission_per_kg?: number;
-          broker_commission_total?: number;
-          farmer_payment_status?: Database["public"]["Enums"]["payment_status"];
-          note?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<Database["public"]["Tables"]["purchase_items"]["Insert"]>;
         Relationships: [];
       };
       purchase_slip_attachments: {
@@ -664,7 +598,7 @@ export type Database = {
         | "excel_export"
         | "other";
       debt_party_type: "broker" | "transporter_boat" | "factory";
-      debt_source_type: "purchase_item" | "transport_trip" | "processing_record";
+      debt_source_type: "purchase_slip" | "transport_trip" | "processing_record";
       debt_type: "broker_commission" | "transport" | "processing";
       factory_type: "drying" | "milling" | "drying_milling";
       payment_method: "bank_transfer" | "cash";

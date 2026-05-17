@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 type ModalShellProps = {
@@ -8,9 +10,20 @@ type ModalShellProps = {
 };
 
 export function ModalShell({ children, onClose, wide = false }: ModalShellProps) {
-  return (
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className={wide ? "modal-panel modal-panel-wide" : "modal-panel"}>
+      <div
+        className={wide ? "modal-panel modal-panel-wide" : "modal-panel"}
+        onClick={(event) => event.stopPropagation()}
+      >
         {onClose ? (
           <button className="modal-close-button" type="button" onClick={onClose} aria-label="Đóng">
             <X size={18} aria-hidden="true" />
@@ -18,6 +31,7 @@ export function ModalShell({ children, onClose, wide = false }: ModalShellProps)
         ) : null}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

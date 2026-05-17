@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { PaginationControls } from "../../components/ui/PaginationControls";
+import { useServerPagination } from "../../hooks/useServerPagination";
 import { exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
+import { formatDbError } from "../../lib/db-errors";
 
 type AuthorizationLetter = Tables<"authorization_letters">;
 type AuthorizationLetterPurchaseSlip = Tables<"authorization_letter_purchase_slips">;
@@ -62,12 +65,21 @@ const emptyValues: FormValues = {
 };
 
 export function AuthorizationLettersPage() {
-  const [letters, setLetters] = useState<LetterRow[]>([]);
+  const {
+    items: letterRows,
+    page,
+    setPage,
+    total,
+    totalPages,
+    search,
+    setSearch,
+    loading,
+    error: listError,
+    refresh,
+  } = useServerPagination<AuthorizationLetter>("authorization_letters");
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [purchaseSlips, setPurchaseSlips] = useState<SlipRow[]>([]);
   const [links, setLinks] = useState<AuthorizationLetterPurchaseSlip[]>([]);
-  const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,70 +126,17 @@ export function AuthorizationLettersPage() {
     });
   }, [editingItem?.id, purchaseSlips, selectedBrokerId, slipLinkMap]);
 
-  const filteredLetters = useMemo(() => {
-    const keyword = normalize(search);
-    if (!keyword) return letters;
+  const brokerMap = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker])), [brokers]);
+  const slipMap = useMemo(() => new Map(purchaseSlips.map((slip) => [slip.id, slip])), [purchaseSlips]);
 
-    return letters.filter((letter) =>
-      [letter.code, letter.receiverBroker?.name, letter.note].some((value) =>
-        normalize(value).includes(keyword),
-      ),
-    );
-  }, [letters, search]);
-
-  async function loadData() {
-    setLoading(true);
-    setError(null);
-
-    const [lettersResult, linksResult, brokersResult, slipsResult, farmersResult, riceTypesResult] =
-      await Promise.all([
-        supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
-        supabase.from("authorization_letter_purchase_slips").select("*"),
-        supabase.from("brokers").select("*").order("name", { ascending: true }),
-        supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
-        supabase.from("farmers").select("*").order("name", { ascending: true }),
-        supabase.from("rice_types").select("*").order("name", { ascending: true }),
-      ]);
-
-    const firstError =
-      lettersResult.error ??
-      linksResult.error ??
-      brokersResult.error ??
-      slipsResult.error ??
-      farmersResult.error ??
-      riceTypesResult.error;
-
-    if (firstError) {
-      setError(firstError.message);
-      setLoading(false);
-      return;
-    }
-
-    const brokerRows = brokersResult.data ?? [];
-    const farmerRows = farmersResult.data ?? [];
-    const riceTypeRows = riceTypesResult.data ?? [];
-    const linkRows = linksResult.data ?? [];
-    const brokerMap = new Map(brokerRows.map((broker) => [broker.id, broker]));
-    const farmerMap = new Map(farmerRows.map((farmer) => [farmer.id, farmer]));
-    const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
-    const slipRows: SlipRow[] = (slipsResult.data ?? []).map((slip) => ({
-      ...slip,
-      farmer: farmerMap.get(slip.farmer_id) ?? null,
-      broker: brokerMap.get(slip.broker_id) ?? null,
-      riceType: riceTypeMap.get(slip.rice_type_id) ?? null,
-    }));
-    const slipMap = new Map(slipRows.map((slip) => [slip.id, slip]));
-
-    setBrokers(brokerRows);
-    setPurchaseSlips(slipRows);
-    setLinks(linkRows);
-    setLetters(
-      (lettersResult.data ?? []).map((letter) => ({
+  const letters = useMemo<LetterRow[]>(
+    () =>
+      letterRows.map((letter) => ({
         ...letter,
         receiverBroker: letter.authorized_receiver_broker_id
           ? brokerMap.get(letter.authorized_receiver_broker_id) ?? null
           : null,
-        slips: linkRows
+        slips: links
           .filter((link) => link.authorization_letter_id === letter.id)
           .reduce<SlipRow[]>((currentSlips, link) => {
             const slip = slipMap.get(link.purchase_slip_id);
@@ -185,12 +144,51 @@ export function AuthorizationLettersPage() {
             return currentSlips;
           }, []),
       })),
+    [letterRows, brokerMap, links, slipMap],
+  );
+
+  async function loadReferenceData() {
+    const [linksResult, brokersResult, slipsResult, farmersResult, riceTypesResult] = await Promise.all([
+      supabase.from("authorization_letter_purchase_slips").select("*"),
+      supabase.from("brokers").select("*").order("name", { ascending: true }),
+      supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
+      supabase.from("farmers").select("*").order("name", { ascending: true }),
+      supabase.from("rice_types").select("*").order("name", { ascending: true }),
+    ]);
+
+    const firstError =
+      linksResult.error ??
+      brokersResult.error ??
+      slipsResult.error ??
+      farmersResult.error ??
+      riceTypesResult.error;
+
+    if (firstError) {
+      setError(formatDbError(firstError));
+      return;
+    }
+
+    const brokerRows = brokersResult.data ?? [];
+    const farmerRows = farmersResult.data ?? [];
+    const riceTypeRows = riceTypesResult.data ?? [];
+    const brokerMapRef = new Map(brokerRows.map((broker) => [broker.id, broker]));
+    const farmerMap = new Map(farmerRows.map((farmer) => [farmer.id, farmer]));
+    const riceTypeMap = new Map(riceTypeRows.map((riceType) => [riceType.id, riceType]));
+
+    setBrokers(brokerRows);
+    setLinks(linksResult.data ?? []);
+    setPurchaseSlips(
+      (slipsResult.data ?? []).map((slip) => ({
+        ...slip,
+        farmer: farmerMap.get(slip.farmer_id) ?? null,
+        broker: brokerMapRef.get(slip.broker_id) ?? null,
+        riceType: riceTypeMap.get(slip.rice_type_id) ?? null,
+      })),
     );
-    setLoading(false);
   }
 
   useEffect(() => {
-    void loadData();
+    void loadReferenceData();
   }, []);
 
   function startEdit(item: LetterRow) {
@@ -255,7 +253,7 @@ export function AuthorizationLettersPage() {
       : await supabase.from("authorization_letters").insert(payload).select("id").single();
 
     if (result.error) {
-      setError(result.error.message);
+      setError(formatDbError(result.error));
       setSaving(false);
       return;
     }
@@ -267,7 +265,7 @@ export function AuthorizationLettersPage() {
       .eq("authorization_letter_id", letterId);
 
     if (deleteLinksResult.error) {
-      setError(deleteLinksResult.error.message);
+      setError(formatDbError(deleteLinksResult.error));
       setSaving(false);
       return;
     }
@@ -281,10 +279,11 @@ export function AuthorizationLettersPage() {
       .insert(linkRows);
 
     if (insertLinksResult.error) {
-      setError(insertLinksResult.error.message);
+      setError(formatDbError(insertLinksResult.error));
     } else {
       clearForm();
-      await loadData();
+      await loadReferenceData();
+      await refresh(editingItem ? page : 1);
     }
 
     setSaving(false);
@@ -303,10 +302,11 @@ export function AuthorizationLettersPage() {
       .eq("id", item.id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(formatDbError(deleteError));
     } else {
       if (editingItem?.id === item.id) clearForm();
-      await loadData();
+      await loadReferenceData();
+      await refresh(page);
     }
 
     setDeletingId(null);
@@ -520,13 +520,14 @@ export function AuthorizationLettersPage() {
             </label>
           </div>
 
-          {error ? <div className="alert error-alert">{error}</div> : null}
+          {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải giấy ủy quyền...</div>
-          ) : filteredLetters.length === 0 ? (
+          ) : letters.length === 0 ? (
             <div className="state-box">Không có giấy ủy quyền phù hợp.</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="data-table extra-wide-table">
                 <thead>
@@ -542,7 +543,7 @@ export function AuthorizationLettersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLetters.map((item) => {
+                  {letters.map((item) => {
                     const totals = calculateTotals(item.slips);
 
                     return (
@@ -584,6 +585,14 @@ export function AuthorizationLettersPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+            </>
           )}
         </div>
       </div>
@@ -601,10 +610,6 @@ function calculateTotals(slips: SlipRow[]) {
 
 function formatStatus(value: AuthorizationLetterStatus) {
   return statusOptions.find((option) => option.value === value)?.label ?? value;
-}
-
-function normalize(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
 }
 
 function toNullable(value: string | undefined) {
