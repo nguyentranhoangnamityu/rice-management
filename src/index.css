@@ -1039,6 +1039,8 @@ a {
 }
 
 .qr-scanner {
+  position: relative;
+  display: grid;
   overflow: hidden;
   width: 100%;
   min-height: 320px;
@@ -1048,21 +1050,12 @@ a {
 }
 
 .qr-scanner video {
+  display: block;
   width: 100% !important;
+  height: clamp(320px, 54vh, 430px);
   min-height: 320px;
   object-fit: cover;
   border-radius: 8px;
-}
-
-.qr-file-scanner {
-  position: fixed;
-  left: -9999px;
-  top: 0;
-  width: 520px;
-  height: 520px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .stops-editor {
