@@ -1054,6 +1054,17 @@ a {
   border-radius: 8px;
 }
 
+.qr-file-scanner {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 520px;
+  height: 520px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .stops-editor {
   display: grid;
   gap: 12px;

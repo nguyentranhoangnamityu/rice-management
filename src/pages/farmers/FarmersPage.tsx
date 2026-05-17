@@ -65,7 +65,6 @@ const emptyValues: FarmerFormValues = {
 
 const QR_SCAN_MIN_SIZE = 180;
 const QR_SCAN_IDEAL_SIZE = 260;
-const QR_SCAN_IDEAL_SIZE_IOS = 220;
 const QR_CAPTURE_OUTPUT_MIN_SIZE = 480;
 const QR_CAPTURE_OUTPUT_MAX_SIZE = 1100;
 
@@ -571,11 +570,14 @@ function CitizenQrScanner({
   onScan,
 }: CitizenQrScannerProps) {
   const scannerElementId = useId().replace(/:/g, "-");
+  const fileScannerElementId = `${scannerElementId}-file`;
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const fileScannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const stoppedRef = useRef(false);
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const realtimeStatusTimerRef = useRef<number | null>(null);
+  const autoSnapshotTimerRef = useRef<number | null>(null);
+  const autoSnapshotInProgressRef = useRef(false);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [cameraLookupDone, setCameraLookupDone] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
@@ -621,14 +623,25 @@ function CitizenQrScanner({
     }
   }, [scannerElementId]);
 
+  const getFileScanner = useCallback(() => {
+    if (!fileScannerRef.current) {
+      fileScannerRef.current = new Html5Qrcode(fileScannerElementId, {
+        verbose: false,
+        formatsToSupport: getQrCodeFormats(),
+        useBarCodeDetectorIfSupported: false,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: false },
+      });
+    }
+
+    return fileScannerRef.current;
+  }, [fileScannerElementId]);
+
   useEffect(() => {
     Html5Qrcode.getCameras()
       .then((devices) => {
         const cameraOptions = devices.map((device) => ({ id: device.id, label: device.label }));
         setCameras(cameraOptions);
-        if (!isAppleMobileDevice()) {
-          setSelectedCameraId((currentId) => currentId ?? findBestRearCamera(cameraOptions)?.id ?? null);
-        }
+        setSelectedCameraId((currentId) => currentId ?? findBestRearCamera(cameraOptions)?.id ?? null);
         setCameraLookupDone(true);
       })
       .catch(() => {
@@ -643,6 +656,7 @@ function CitizenQrScanner({
     let active = true;
     const effectStoppedRef = { current: false };
     let stopNativeScanLoop: (() => void) | null = null;
+    let stopAutoSnapshotLoop: (() => void) | null = null;
     clearScannerContainer();
     const scanner = new Html5Qrcode(scannerElementId, {
       verbose: false,
@@ -651,8 +665,9 @@ function CitizenQrScanner({
       experimentalFeatures: { useBarCodeDetectorIfSupported: false },
     });
     scannerRef.current = scanner;
-    stoppedRef.current = false;
-    const cameraConfig = buildCameraStartConfig(selectedCameraId);
+    const cameraConfig = selectedCameraId
+      ? selectedCameraId
+      : ({ facingMode: { ideal: "environment" } } as MediaTrackConstraints);
     const handleDecodedText = (decodedText: string, decodedResult?: unknown) => {
       if (decodedResult) {
         updateDistanceIndicator(decodedResult);
@@ -679,13 +694,6 @@ function CitizenQrScanner({
       );
 
     startRealtimeScanner(cameraConfig)
-      .catch((scanError: unknown) => {
-        if (!shouldRetryWithIdealRearCamera(selectedCameraId)) {
-          throw scanError;
-        }
-
-        return startRealtimeScanner(buildIdealRearCameraStartConfig());
-      })
       .then(() => {
         if (!active) {
           void stopScanner(scanner, effectStoppedRef);
@@ -693,11 +701,17 @@ function CitizenQrScanner({
           return;
         }
         void tuneActiveCamera(scanner);
-        if (shouldUseNativeQrScanLoop()) {
+        if (!isAppleMobileDevice()) {
           stopNativeScanLoop = startNativeQrScanLoop(scannerElementId, handleDecodedText, setRealtimeScanStatus);
-        } else {
-          setRealtimeScanStatus("Đang quét QR bằng chế độ iPhone...");
         }
+        stopAutoSnapshotLoop = startAutoSnapshotScanLoop({
+          scannerElementId,
+          getFileScanner,
+          inProgressRef: autoSnapshotInProgressRef,
+          timerRef: autoSnapshotTimerRef,
+          onDetected: handleDecodedText,
+          onStatus: setRealtimeScanStatus,
+        });
       })
       .catch((scanError: unknown) => {
         if (!active) return;
@@ -711,13 +725,15 @@ function CitizenQrScanner({
         realtimeStatusTimerRef.current = null;
       }
       stopNativeScanLoop?.();
+      stopAutoSnapshotLoop?.();
       void stopScanner(scanner, effectStoppedRef);
+      clearFileScanner(fileScannerRef);
       clearScannerContainer();
       if (scannerRef.current === scanner) {
         scannerRef.current = null;
       }
     };
-  }, [cameraLookupDone, clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId, updateDistanceIndicator]);
+  }, [cameraLookupDone, clearScannerContainer, getFileScanner, onError, onScan, scannerElementId, selectedCameraId, updateDistanceIndicator]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
@@ -742,14 +758,7 @@ function CitizenQrScanner({
     try {
       onError(null);
       setUploadScanStatus("Đang đọc ảnh QR...");
-      const scanner = scannerRef.current ?? new Html5Qrcode(scannerElementId, {
-        verbose: false,
-        formatsToSupport: getQrCodeFormats(),
-        useBarCodeDetectorIfSupported: true,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-      });
-      scannerRef.current = scanner;
-      await stopScanner(scanner, stoppedRef);
+      const scanner = getFileScanner();
       const decodedText = await scanFileWithEnhancement(scanner, file, (message) =>
         setUploadScanStatus(message),
       );
@@ -769,10 +778,7 @@ function CitizenQrScanner({
     try {
       onError(null);
       setUploadScanStatus("Đang chụp khung hình để quét...");
-      const scanner = scannerRef.current;
-      if (!scanner) {
-        throw new Error("Scanner chưa sẵn sàng.");
-      }
+      const scanner = getFileScanner();
 
       const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
       if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
@@ -794,7 +800,6 @@ function CitizenQrScanner({
       );
       setUploadScanStatus("Đã đọc QR từ ảnh chụp.");
       onScan(decodedText);
-      await stopScanner(scanner, stoppedRef);
     } catch (scanError) {
       setUploadScanStatus("");
       onError(`Không đọc được QR từ ảnh chụp: ${formatErrorMessage(scanError)}`);
@@ -841,6 +846,7 @@ function CitizenQrScanner({
 
       <div className="scanner-frame">
         <div id={scannerElementId} className="qr-scanner" />
+        <div id={fileScannerElementId} className="qr-file-scanner" aria-hidden="true" />
       </div>
 
       <div className="scan-progress-card" aria-live="polite">
@@ -890,10 +896,8 @@ function getQrCodeFormats() {
 }
 
 function buildRealtimeScannerConfig(selectedCameraId: string | null): Html5QrcodeCameraScanConfig {
-  const isAppleMobile = isAppleMobileDevice();
-
   return {
-    fps: isAppleMobile ? 8 : 12,
+    fps: 12,
     qrbox: buildRealtimeQrbox,
     disableFlip: true,
     videoConstraints: buildVideoConstraints(selectedCameraId),
@@ -901,69 +905,31 @@ function buildRealtimeScannerConfig(selectedCameraId: string | null): Html5Qrcod
 }
 
 function buildRealtimeQrbox(viewfinderWidth: number, viewfinderHeight: number) {
-  const idealTarget = isAppleMobileDevice() ? QR_SCAN_IDEAL_SIZE_IOS : QR_SCAN_IDEAL_SIZE;
   const maxSize = Math.max(QR_SCAN_MIN_SIZE, Math.min(viewfinderWidth, viewfinderHeight) - 24);
   const idealSize = Math.round(Math.min(viewfinderWidth, viewfinderHeight) * 0.68);
-  const size = clamp(idealSize, QR_SCAN_MIN_SIZE, Math.min(idealTarget, maxSize));
+  const size = clamp(idealSize, QR_SCAN_MIN_SIZE, Math.min(QR_SCAN_IDEAL_SIZE, maxSize));
 
   return { width: size, height: size };
 }
 
-function buildCameraStartConfig(selectedCameraId: string | null): string | MediaTrackConstraints {
-  if (selectedCameraId) return selectedCameraId;
-
-  return {
-    facingMode: isAppleMobileDevice() ? { exact: "environment" } : { ideal: "environment" },
-  } as MediaTrackConstraints;
-}
-
-function buildIdealRearCameraStartConfig(): MediaTrackConstraints {
-  return {
-    facingMode: { ideal: "environment" },
-  } as MediaTrackConstraints;
-}
-
 function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConstraints {
-  const isAppleMobile = isAppleMobileDevice();
-  const sizeConstraints = isAppleMobile
-    ? {
-        width: { ideal: 960 },
-        height: { ideal: 540 },
-        frameRate: { ideal: 15, max: 24 },
-      }
-    : {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 24, max: 30 },
-      };
-
   if (selectedCameraId) {
     return {
       deviceId: { exact: selectedCameraId },
-      ...sizeConstraints,
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 24, max: 30 },
       resizeMode: "crop-and-scale",
     } as MediaTrackConstraints;
   }
 
   return {
-    facingMode: isAppleMobile ? { exact: "environment" } : { ideal: "environment" },
-    ...sizeConstraints,
+    facingMode: { ideal: "environment" },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 24, max: 30 },
     resizeMode: "crop-and-scale",
   } as MediaTrackConstraints;
-}
-
-function isAppleMobileDevice() {
-  const userAgent = navigator.userAgent || "";
-  const platform = navigator.platform || "";
-  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-function shouldUseNativeQrScanLoop() {
-  return !isAppleMobileDevice();
-}
-
-function shouldRetryWithIdealRearCamera(selectedCameraId: string | null) {
-  return isAppleMobileDevice() && !selectedCameraId;
 }
 
 function findBestRearCamera(cameras: Array<{ id: string; label: string }>) {
@@ -1062,6 +1028,130 @@ function startNativeQrScanLoop(
       window.clearTimeout(timeoutId);
     }
   };
+}
+
+function startAutoSnapshotScanLoop({
+  scannerElementId,
+  getFileScanner,
+  inProgressRef,
+  timerRef,
+  onDetected,
+  onStatus,
+}: {
+  scannerElementId: string;
+  getFileScanner: () => Html5Qrcode;
+  inProgressRef: React.MutableRefObject<boolean>;
+  timerRef: React.MutableRefObject<number | null>;
+  onDetected: (decodedText: string, decodedResult?: unknown) => void;
+  onStatus: (message: string) => void;
+}) {
+  if (!isAppleMobileDevice()) return null;
+
+  let active = true;
+  onStatus("Đang quét QR bằng ảnh chụp tự động...");
+
+  const scheduleNextScan = () => {
+    if (!active) return;
+    timerRef.current = window.setTimeout(() => {
+      void scanFrame();
+    }, 750);
+  };
+
+  const scanFrame = async () => {
+    if (!active || inProgressRef.current) return;
+
+    const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+      scheduleNextScan();
+      return;
+    }
+
+    inProgressRef.current = true;
+    try {
+      const canvas = renderCenteredVideoCrop(video);
+      const decodedText = await scanCanvasFast(getFileScanner(), canvas);
+      if (active) {
+        onDetected(decodedText);
+      }
+    } catch {
+      // The realtime scanner is still running; retry with the next camera frame.
+    } finally {
+      inProgressRef.current = false;
+      scheduleNextScan();
+    }
+  };
+
+  scheduleNextScan();
+
+  return () => {
+    active = false;
+    inProgressRef.current = false;
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+}
+
+function renderCenteredVideoCrop(video: HTMLVideoElement) {
+  const sourceSize = Math.round(Math.min(video.videoWidth, video.videoHeight) * 0.72);
+  const sourceX = Math.max(0, Math.round((video.videoWidth - sourceSize) / 2));
+  const sourceY = Math.max(0, Math.round((video.videoHeight - sourceSize) / 2));
+  const outputSize = 520;
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const context = canvas.getContext("2d");
+  if (!context) return canvas;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, outputSize, outputSize);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(video, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize);
+
+  return canvas;
+}
+
+async function scanCanvasFast(scanner: Html5Qrcode, canvas: HTMLCanvasElement) {
+  const rawFile = await canvasToFile(canvas, "auto-qr-frame.png");
+
+  try {
+    return await scanner.scanFile(rawFile, false);
+  } catch {
+    const contrastCanvas = renderCanvasContrastVariant(canvas);
+    const contrastFile = await canvasToFile(contrastCanvas, "auto-qr-frame-contrast.png");
+    return scanner.scanFile(contrastFile, false);
+  }
+}
+
+function renderCanvasContrastVariant(source: HTMLCanvasElement) {
+  const canvas = document.createElement("canvas");
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext("2d");
+  if (!context) return canvas;
+
+  context.drawImage(source, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const gray =
+      imageData.data[index] * 0.299 +
+      imageData.data[index + 1] * 0.587 +
+      imageData.data[index + 2] * 0.114;
+    const value = gray < 145 ? 0 : 255;
+    imageData.data[index] = value;
+    imageData.data[index + 1] = value;
+    imageData.data[index + 2] = value;
+  }
+  context.putImageData(imageData, 0, 0);
+
+  return canvas;
+}
+
+function isAppleMobileDevice() {
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
 function createNativeQrDetector() {
@@ -1336,6 +1426,16 @@ async function stopScanner(scanner: Html5Qrcode, stoppedRef: React.MutableRefObj
     await scanner.clear();
   } catch {
     // Camera may already be stopped by the browser or permission flow.
+  }
+}
+
+function clearFileScanner(scannerRef: React.MutableRefObject<Html5Qrcode | null>) {
+  try {
+    scannerRef.current?.clear();
+  } catch {
+    // Hidden file scanner may already be clear or mid-decode during unmount.
+  } finally {
+    scannerRef.current = null;
   }
 }
 
