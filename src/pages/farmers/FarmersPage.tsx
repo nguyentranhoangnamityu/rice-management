@@ -788,15 +788,6 @@ function CitizenQrScanner({
 
       <div className="scanner-frame">
         <div id={scannerElementId} className="qr-scanner" />
-        <div className="scanner-target-box" aria-hidden="true">
-          <span className="scanner-target-label">Đưa QR vào đây</span>
-          <div className="scanner-target-corners">
-            <span className="corner top-left" />
-            <span className="corner top-right" />
-            <span className="corner bottom-left" />
-            <span className="corner bottom-right" />
-          </div>
-        </div>
       </div>
 
       <div className="scan-progress-card" aria-live="polite">
