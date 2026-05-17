@@ -1,4 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { BarcodeFormat, BrowserQRCodeReader } from "@zxing/browser";
+import { DecodeHintType } from "@zxing/library";
 import { Camera, Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -66,6 +68,8 @@ const QR_SCAN_MIN_SIZE = 180;
 const QR_SCAN_IDEAL_SIZE = 260;
 const QR_CAPTURE_OUTPUT_MIN_SIZE = 480;
 const QR_CAPTURE_OUTPUT_MAX_SIZE = 1100;
+const QR_REALTIME_ZXING_INTERVAL_MS = 160;
+const QR_REALTIME_ZXING_PLANS_PER_TICK = 2;
 
 function RequiredLabel({ children }: { children: string }) {
   return (
@@ -632,7 +636,7 @@ function CitizenQrScanner({
       calculateScanRegion: calculateQrScanRegion,
       highlightCodeOutline: true,
       highlightScanRegion: true,
-      maxScansPerSecond: 16,
+      maxScansPerSecond: 12,
       onDecodeError: () => {
         // Decode misses happen continuously while searching; keep the UI quiet.
       },
@@ -649,14 +653,13 @@ function CitizenQrScanner({
           return;
         }
         setRealtimeScanStatus("Đang dò QR realtime...");
-        if (isAppleMobileDevice()) {
-          stopFullFrameScanLoop = startFullFrameScanLoop(video, handleDecodedText, setRealtimeScanStatus);
-        }
+        stopFullFrameScanLoop = startRobustFrameScanLoop(video, handleDecodedText, setRealtimeScanStatus);
         void QrScanner.listCameras(true).then((nextCameras) => {
           if (!active) return;
           const cameraOptions = nextCameras.map((camera) => ({ id: camera.id, label: camera.label }));
           setCameras(cameraOptions);
         });
+        void tuneActiveVideoTrack(video);
         void video.play().catch(() => {
           // Safari may reject play() if the stream is still warming up; QrScanner keeps the stream active.
         });
@@ -886,7 +889,7 @@ function calculateQrScanRegion(video: HTMLVideoElement): QrScanner.ScanRegion {
   };
 }
 
-function startFullFrameScanLoop(
+function startRobustFrameScanLoop(
   video: HTMLVideoElement,
   onDetected: (decodedText: string, result?: QrScanner.ScanResult) => void,
   onStatus: (message: string) => void,
@@ -894,16 +897,16 @@ function startFullFrameScanLoop(
   let active = true;
   let scanning = false;
   let timerId: number | null = null;
-  preferWorkerQrEngineOnAppleMobile();
-  const qrEnginePromise = QrScanner.createQrEngine();
+  let scanPlanCursor = 0;
+  const zxingReader = createZxingQrReader();
 
-  onStatus("Đang quét QR realtime trên iPhone...");
+  onStatus(isAppleMobileDevice() ? "Đang quét QR tối ưu cho iPhone..." : "Đang quét QR realtime...");
 
   const scheduleNextScan = () => {
     if (!active) return;
     timerId = window.setTimeout(() => {
       void scanFrame();
-    }, 320);
+    }, QR_REALTIME_ZXING_INTERVAL_MS);
   };
 
   const scanFrame = async () => {
@@ -916,18 +919,18 @@ function startFullFrameScanLoop(
 
     scanning = true;
     try {
-      const result = await QrScanner.scanImage(video, {
-        alsoTryWithoutScanRegion: true,
-        qrEngine: qrEnginePromise,
-        returnDetailedScanResult: true,
-      });
+      const decodedText = decodeVideoFrameWithZxing(
+        video,
+        zxingReader,
+        scanPlanCursor,
+        QR_REALTIME_ZXING_PLANS_PER_TICK,
+      );
 
-      if (active) {
-        onDetected(result.data, result);
-      }
+      if (active) onDetected(decodedText);
     } catch {
-      // Keep scanning; misses are expected frame-by-frame on iPhone Safari.
+      // Keep scanning; misses are expected frame-by-frame.
     } finally {
+      scanPlanCursor = (scanPlanCursor + QR_REALTIME_ZXING_PLANS_PER_TICK) % VIDEO_QR_SCAN_PLANS.length;
       scanning = false;
       scheduleNextScan();
     }
@@ -940,10 +943,123 @@ function startFullFrameScanLoop(
     if (timerId) {
       window.clearTimeout(timerId);
     }
-    void qrEnginePromise.then(closeQrEngine).catch(() => {
-      // The page may unmount while Safari is still opening the QR engine.
-    });
   };
+}
+
+function createZxingQrReader() {
+  const hints = new Map<DecodeHintType, unknown>();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  hints.set(DecodeHintType.CHARACTER_SET, "UTF-8");
+
+  return new BrowserQRCodeReader(hints, {
+    delayBetweenScanAttempts: QR_REALTIME_ZXING_INTERVAL_MS,
+    delayBetweenScanSuccess: 900,
+    tryPlayVideoTimeout: 5000,
+  });
+}
+
+function decodeVideoFrameWithZxing(
+  video: HTMLVideoElement,
+  reader: BrowserQRCodeReader,
+  startPlanIndex: number,
+  planCount: number,
+) {
+  for (let offset = 0; offset < planCount; offset += 1) {
+    const plan = VIDEO_QR_SCAN_PLANS[(startPlanIndex + offset) % VIDEO_QR_SCAN_PLANS.length];
+    const canvas = renderVideoQrVariant(video, plan);
+    if (!canvas) continue;
+
+    try {
+      const result = reader.decodeFromCanvas(canvas);
+      const text = result.getText();
+      if (text) return text;
+    } catch {
+      // Try the next crop/contrast variant.
+    }
+  }
+
+  throw new Error("No QR code found");
+}
+
+type VideoQrScanPlan = {
+  centerXRatio: number;
+  centerYRatio: number;
+  mode: QrImageVariantMode;
+  sizeRatio: number;
+};
+
+const VIDEO_QR_SCAN_PLANS: VideoQrScanPlan[] = [
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "raw", sizeRatio: 0.78 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "contrast", sizeRatio: 0.78 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "threshold-mid", sizeRatio: 0.78 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "raw", sizeRatio: 0.58 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "contrast", sizeRatio: 1 },
+  { centerXRatio: 0.5, centerYRatio: 0.42, mode: "raw", sizeRatio: 0.72 },
+  { centerXRatio: 0.5, centerYRatio: 0.58, mode: "raw", sizeRatio: 0.72 },
+  { centerXRatio: 0.42, centerYRatio: 0.5, mode: "raw", sizeRatio: 0.72 },
+  { centerXRatio: 0.58, centerYRatio: 0.5, mode: "raw", sizeRatio: 0.72 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "threshold-low", sizeRatio: 1 },
+  { centerXRatio: 0.5, centerYRatio: 0.5, mode: "threshold-high", sizeRatio: 1 },
+];
+
+function renderVideoQrVariant(video: HTMLVideoElement, plan: VideoQrScanPlan) {
+  const frameWidth = video.videoWidth;
+  const frameHeight = video.videoHeight;
+  const minEdge = Math.min(frameWidth, frameHeight);
+  if (minEdge <= 0) return null;
+
+  const sourceSize = Math.min(minEdge, Math.max(180, Math.round(minEdge * plan.sizeRatio)));
+  const sourceX = clamp(Math.round(frameWidth * plan.centerXRatio - sourceSize / 2), 0, frameWidth - sourceSize);
+  const sourceY = clamp(Math.round(frameHeight * plan.centerYRatio - sourceSize / 2), 0, frameHeight - sourceSize);
+  const outputSize = clamp(Math.round(sourceSize * 1.25), 520, 900);
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  const context = canvas.getContext("2d", { willReadFrequently: true }) ?? canvas.getContext("2d");
+  if (!context) return null;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, outputSize, outputSize);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(video, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize);
+  applyQrCanvasMode(canvas, plan.mode);
+
+  return canvas;
+}
+
+async function tuneActiveVideoTrack(video: HTMLVideoElement) {
+  try {
+    const stream = video.srcObject instanceof MediaStream ? video.srcObject : null;
+    const track = stream?.getVideoTracks()[0];
+    if (!track) return;
+
+    const capabilities = typeof track.getCapabilities === "function"
+      ? (track.getCapabilities() as Record<string, unknown>)
+      : {};
+    const advancedConstraints: Array<Record<string, unknown>> = [];
+
+    if (cameraCapabilityIncludes(capabilities, "focusMode", "continuous")) {
+      advancedConstraints.push({ focusMode: "continuous" });
+    }
+    if (cameraCapabilityIncludes(capabilities, "exposureMode", "continuous")) {
+      advancedConstraints.push({ exposureMode: "continuous" });
+    }
+    if (cameraCapabilityIncludes(capabilities, "whiteBalanceMode", "continuous")) {
+      advancedConstraints.push({ whiteBalanceMode: "continuous" });
+    }
+
+    if (advancedConstraints.length === 0) return;
+    await track.applyConstraints({ advanced: advancedConstraints as MediaTrackConstraintSet[] });
+  } catch {
+    // Safari accepts only a subset of camera constraints; scanning still works without these hints.
+  }
+}
+
+function cameraCapabilityIncludes(capabilities: Record<string, unknown>, key: string, value: string) {
+  const candidate = capabilities[key];
+  return Array.isArray(candidate) && candidate.includes(value);
 }
 
 function isAppleMobileDevice() {
@@ -1025,19 +1141,41 @@ async function scanFileWithEnhancement(
 
   try {
     try {
-      onStatus("Đang thử đọc ảnh gốc...");
+      onStatus("Đang thử đọc ảnh gốc bằng QR worker...");
       return await scanQrImage(file, qrEngine);
     } catch {
       // Continue with generated crops and threshold variants.
     }
 
     const image = await loadImage(file);
+    const zxingReader = createZxingQrReader();
+    const fullImageVariants = [
+      renderImageVariant(image, "raw"),
+      renderImageVariant(image, "contrast"),
+      renderImageVariant(image, "threshold-mid"),
+    ];
+
+    for (const [index, canvas] of fullImageVariants.entries()) {
+      onStatus(`Đang thử ảnh đầy đủ ${index + 1}/${fullImageVariants.length}...`);
+      try {
+        return decodeCanvasWithZxing(canvas, zxingReader);
+      } catch {
+        // Try next full-image variant.
+      }
+    }
+
     const variants = buildQrImageVariants(image);
 
     for (const [index, variant] of variants.entries()) {
       onStatus(`Đang thử vùng QR ${index + 1}/${variants.length}...`);
       try {
         return await scanQrImage(variant.canvas, qrEngine);
+      } catch {
+        // Try ZXing below.
+      }
+
+      try {
+        return decodeCanvasWithZxing(variant.canvas, zxingReader);
       } catch {
         // Try next variant.
       }
@@ -1059,6 +1197,13 @@ async function scanQrImage(
     returnDetailedScanResult: true,
   });
   return result.data;
+}
+
+function decodeCanvasWithZxing(canvas: HTMLCanvasElement, reader: BrowserQRCodeReader) {
+  const result = reader.decodeFromCanvas(canvas);
+  const text = result.getText();
+  if (!text) throw new Error("No QR code found");
+  return text;
 }
 
 function closeQrEngine(qrEngine: Awaited<ReturnType<typeof QrScanner.createQrEngine>>) {
@@ -1108,6 +1253,26 @@ function buildQrImageVariants(image: HTMLImageElement) {
 
 type QrImageVariantMode = "raw" | "gray" | "contrast" | "threshold-low" | "threshold-mid" | "threshold-high";
 
+function renderImageVariant(image: HTMLImageElement, mode: QrImageVariantMode) {
+  const maxEdge = 1400;
+  const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+  const outputWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+  const outputHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true }) ?? canvas.getContext("2d");
+  if (!context) return canvas;
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, outputWidth, outputHeight);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, 0, 0, outputWidth, outputHeight);
+  applyQrCanvasMode(canvas, mode);
+
+  return canvas;
+}
+
 function renderCropVariant(
   image: HTMLImageElement,
   x: number,
@@ -1130,6 +1295,24 @@ function renderCropVariant(
   if (mode === "raw") return canvas;
 
   const imageData = context.getImageData(0, 0, outputSize, outputSize);
+  normalizeQrImageData(imageData, mode);
+  context.putImageData(imageData, 0, 0);
+
+  return canvas;
+}
+
+function applyQrCanvasMode(canvas: HTMLCanvasElement, mode: QrImageVariantMode) {
+  if (mode === "raw") return;
+
+  const context = canvas.getContext("2d", { willReadFrequently: true }) ?? canvas.getContext("2d");
+  if (!context) return;
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  normalizeQrImageData(imageData, mode);
+  context.putImageData(imageData, 0, 0);
+}
+
+function normalizeQrImageData(imageData: ImageData, mode: QrImageVariantMode) {
   for (let index = 0; index < imageData.data.length; index += 4) {
     const gray =
       imageData.data[index] * 0.299 +
@@ -1140,9 +1323,6 @@ function renderCropVariant(
     imageData.data[index + 1] = value;
     imageData.data[index + 2] = value;
   }
-  context.putImageData(imageData, 0, 0);
-
-  return canvas;
 }
 
 function normalizeQrPixel(gray: number, mode: QrImageVariantMode) {
