@@ -556,7 +556,6 @@ function CitizenQrScanner({
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const realtimeStatusTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
-  const [cameraLookupDone, setCameraLookupDone] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [uploadScanStatus, setUploadScanStatus] = useState("");
   const [, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
@@ -610,21 +609,23 @@ function CitizenQrScanner({
       .then((devices) => {
         const cameraOptions = devices.map((device) => ({ id: device.id, label: device.label }));
         setCameras(cameraOptions);
-        setSelectedCameraId((currentId) => currentId ?? findBestRearCamera(cameraOptions)?.id ?? null);
-        setCameraLookupDone(true);
       })
       .catch(() => {
         // Camera listing may fail until permission is granted. Scanner start below reports the actionable error.
-        setCameraLookupDone(true);
       });
   }, []);
 
   useEffect(() => {
-    if (!cameraLookupDone) return;
     const video = videoRef.current;
     if (!video) return;
 
     let active = true;
+    let stopFullFrameScanLoop: (() => void) | null = null;
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+    video.muted = true;
+    preferWorkerQrEngineOnAppleMobile();
+
     const scanner = new QrScanner(video, (result) => {
       handleDecodedText(result.data, result);
     }, {
@@ -648,14 +649,16 @@ function CitizenQrScanner({
           return;
         }
         setRealtimeScanStatus("Đang dò QR realtime...");
+        if (isAppleMobileDevice()) {
+          stopFullFrameScanLoop = startFullFrameScanLoop(video, handleDecodedText, setRealtimeScanStatus);
+        }
         void QrScanner.listCameras(true).then((nextCameras) => {
           if (!active) return;
           const cameraOptions = nextCameras.map((camera) => ({ id: camera.id, label: camera.label }));
           setCameras(cameraOptions);
-          setSelectedCameraId((currentId) => {
-            if (currentId && cameraOptions.some((camera) => camera.id === currentId)) return currentId;
-            return findBestRearCamera(cameraOptions)?.id ?? currentId ?? null;
-          });
+        });
+        void video.play().catch(() => {
+          // Safari may reject play() if the stream is still warming up; QrScanner keeps the stream active.
         });
         onError(null);
       })
@@ -670,21 +673,31 @@ function CitizenQrScanner({
         window.clearTimeout(realtimeStatusTimerRef.current);
         realtimeStatusTimerRef.current = null;
       }
+      stopFullFrameScanLoop?.();
       scanner.destroy();
       if (qrScannerRef.current === scanner) {
         qrScannerRef.current = null;
       }
     };
-  }, [cameraLookupDone, handleDecodedText, onError, selectedCameraId]);
+  }, [handleDecodedText, onError, selectedCameraId]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
 
     setSelectedCameraId((currentId) => {
-      if (!currentId) return cameras[0].id;
-      const currentIndex = cameras.findIndex((camera) => camera.id === currentId);
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameras.length : 0;
-      return cameras[nextIndex].id;
+      const usableCameras = cameras.filter((camera) => camera.id);
+      if (usableCameras.length === 0) return currentId;
+
+      if (!currentId) {
+        const rearCamera = findBestRearCamera(usableCameras);
+        const rearIndex = rearCamera ? usableCameras.findIndex((camera) => camera.id === rearCamera.id) : -1;
+        const nextIndex = rearIndex >= 0 ? (rearIndex + 1) % usableCameras.length : 0;
+        return usableCameras[nextIndex].id;
+      }
+
+      const currentIndex = usableCameras.findIndex((camera) => camera.id === currentId);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % usableCameras.length : 0;
+      return usableCameras[nextIndex].id;
     });
     onError(null);
     setRealtimeScanState("scanning");
@@ -748,7 +761,7 @@ function CitizenQrScanner({
 
   const currentCameraLabel =
     cameras.find((camera) => camera.id === selectedCameraId)?.label ||
-    (selectedCameraId ? "Camera đã chọn" : "Camera sau");
+    (selectedCameraId ? "Camera đã chọn" : "Camera sau tự động");
 
   return (
     <div className="form-card">
@@ -873,6 +886,78 @@ function calculateQrScanRegion(video: HTMLVideoElement): QrScanner.ScanRegion {
   };
 }
 
+function startFullFrameScanLoop(
+  video: HTMLVideoElement,
+  onDetected: (decodedText: string, result?: QrScanner.ScanResult) => void,
+  onStatus: (message: string) => void,
+) {
+  let active = true;
+  let scanning = false;
+  let timerId: number | null = null;
+  preferWorkerQrEngineOnAppleMobile();
+  const qrEnginePromise = QrScanner.createQrEngine();
+
+  onStatus("Đang quét QR realtime trên iPhone...");
+
+  const scheduleNextScan = () => {
+    if (!active) return;
+    timerId = window.setTimeout(() => {
+      void scanFrame();
+    }, 320);
+  };
+
+  const scanFrame = async () => {
+    if (!active || scanning) return;
+
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+      scheduleNextScan();
+      return;
+    }
+
+    scanning = true;
+    try {
+      const result = await QrScanner.scanImage(video, {
+        alsoTryWithoutScanRegion: true,
+        qrEngine: qrEnginePromise,
+        returnDetailedScanResult: true,
+      });
+
+      if (active) {
+        onDetected(result.data, result);
+      }
+    } catch {
+      // Keep scanning; misses are expected frame-by-frame on iPhone Safari.
+    } finally {
+      scanning = false;
+      scheduleNextScan();
+    }
+  };
+
+  scheduleNextScan();
+
+  return () => {
+    active = false;
+    if (timerId) {
+      window.clearTimeout(timerId);
+    }
+    void qrEnginePromise.then(closeQrEngine).catch(() => {
+      // The page may unmount while Safari is still opening the QR engine.
+    });
+  };
+}
+
+function isAppleMobileDevice() {
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function preferWorkerQrEngineOnAppleMobile() {
+  if (!isAppleMobileDevice()) return;
+
+  (QrScanner as unknown as { _disableBarcodeDetector?: boolean })._disableBarcodeDetector = true;
+}
+
 function estimateQrDistanceHint(
   decodedResult: unknown,
   videoWidth: number,
@@ -935,6 +1020,7 @@ async function scanFileWithEnhancement(
   file: File,
   onStatus: (message: string) => void,
 ) {
+  preferWorkerQrEngineOnAppleMobile();
   const qrEngine = await QrScanner.createQrEngine();
 
   try {
