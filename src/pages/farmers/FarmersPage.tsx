@@ -558,6 +558,7 @@ function CitizenQrScanner({
   const lastScanRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
   const realtimeStatusTimerRef = useRef<number | null>(null);
   const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [cameraLookupDone, setCameraLookupDone] = useState(false);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [uploadScanStatus, setUploadScanStatus] = useState("");
   const [, setRealtimeScanState] = useState<"scanning" | "detected">("scanning");
@@ -607,13 +608,19 @@ function CitizenQrScanner({
         const cameraOptions = devices.map((device) => ({ id: device.id, label: device.label }));
         setCameras(cameraOptions);
         setSelectedCameraId((currentId) => currentId ?? findBestRearCamera(cameraOptions)?.id ?? null);
+        setCameraLookupDone(true);
       })
       .catch(() => {
         // Camera listing may fail until permission is granted. Scanner start below reports the actionable error.
+        setCameraLookupDone(true);
       });
   }, []);
 
   useEffect(() => {
+    if (!cameraLookupDone) return;
+
+    let active = true;
+    const effectStoppedRef = { current: false };
     clearScannerContainer();
     const scanner = new Html5Qrcode(scannerElementId, {
       verbose: false,
@@ -649,22 +656,31 @@ function CitizenQrScanner({
         },
       )
       .then(() => {
+        if (!active) {
+          void stopScanner(scanner, effectStoppedRef);
+          clearScannerContainer();
+          return;
+        }
         void tuneActiveCamera(scanner);
       })
       .catch((scanError: unknown) => {
+        if (!active) return;
         onError(formatScannerError(scanError));
       });
 
     return () => {
+      active = false;
       if (realtimeStatusTimerRef.current) {
         window.clearTimeout(realtimeStatusTimerRef.current);
         realtimeStatusTimerRef.current = null;
       }
-      void stopScanner(scanner, stoppedRef);
+      void stopScanner(scanner, effectStoppedRef);
       clearScannerContainer();
-      scannerRef.current = null;
+      if (scannerRef.current === scanner) {
+        scannerRef.current = null;
+      }
     };
-  }, [clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId, updateDistanceIndicator]);
+  }, [cameraLookupDone, clearScannerContainer, onError, onScan, scannerElementId, selectedCameraId, updateDistanceIndicator]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
