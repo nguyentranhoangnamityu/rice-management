@@ -27,7 +27,7 @@ export function LoginPage() {
   const location = useLocation();
   const redirectTo = useMemo(() => {
     const state = location.state as LoginLocationState | null;
-    return state?.from?.pathname ?? "/dashboard";
+    return state?.from?.pathname ?? "/";
   }, [location.state]);
 
   const {

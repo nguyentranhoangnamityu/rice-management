@@ -1,13 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BarcodeFormat, BrowserQRCodeReader } from "@zxing/browser";
 import { DecodeHintType } from "@zxing/library";
-import { Camera, Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
+import { Camera, Edit2, ImageUp, PenLine, Plus, ScanLine, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import QrScanner from "qr-scanner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ModalShell } from "../../components/ui/ModalShell";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { supabase } from "../../lib/supabase";
 import type { Tables } from "../../types/database";
 
@@ -33,6 +34,7 @@ const farmerSchema = z.object({
 });
 
 type FarmerFormValues = z.input<typeof farmerSchema>;
+type FarmerFormStep = "scan" | "entry";
 
 type ParsedCitizenQr = {
   citizen_id: string;
@@ -83,6 +85,7 @@ function RequiredLabel({ children }: { children: string }) {
 }
 
 export function FarmersPage() {
+  const isMobile = useIsMobile();
   const [items, setItems] = useState<Farmer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -95,6 +98,7 @@ export function FarmersPage() {
   const [scanRawText, setScanRawText] = useState("");
   const [parsedCitizenQr, setParsedCitizenQr] = useState<ParsedCitizenQr | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [formStep, setFormStep] = useState<FarmerFormStep>("entry");
 
   const {
     register,
@@ -120,6 +124,10 @@ export function FarmersPage() {
   }, [items, search]);
 
   const formTitle = editingItem ? "Sửa nông dân" : "Thêm nông dân";
+  const isMobileAddFlow = isMobile && !editingItem;
+  const showScanStep = isMobileAddFlow && formStep === "scan";
+  const showEntryStep = !isMobileAddFlow || formStep === "entry";
+  const showDesktopScanner = !isMobileAddFlow && scannerOpen;
 
   async function loadFarmers() {
     setLoading(true);
@@ -162,7 +170,30 @@ export function FarmersPage() {
     });
     setScanRawText(item.citizen_id_qr_raw_text ?? "");
     setParsedCitizenQr(null);
+    setFormStep("entry");
+    setScannerOpen(false);
     setFormOpen(true);
+  }
+
+  function openAddForm() {
+    setEditingItem(null);
+    reset(emptyValues);
+    setScanRawText("");
+    setParsedCitizenQr(null);
+    setScannerError(null);
+    setScannerOpen(false);
+    setFormStep(isMobile ? "scan" : "entry");
+    setFormOpen(true);
+  }
+
+  function goToManualEntry() {
+    setFormStep("entry");
+    setScannerError(null);
+  }
+
+  function goToScanStep() {
+    setFormStep("scan");
+    setScannerError(null);
   }
 
   function clearForm() {
@@ -171,6 +202,8 @@ export function FarmersPage() {
     setScannerOpen(false);
     setScanRawText("");
     setParsedCitizenQr(null);
+    setScannerError(null);
+    setFormStep("scan");
     setFormOpen(false);
   }
 
@@ -257,19 +290,31 @@ export function FarmersPage() {
       setValue("citizen_id_issued_date", parsed.citizen_id_issued_date, { shouldDirty: true, shouldValidate: true });
     }
 
-    if (!parsed.citizen_id && !parsed.name && !parsed.permanent_address) {
-      setScannerError("Đã quét QR nhưng chưa nhận diện được thông tin CCCD. Vui lòng nhập tay.");
-    } else {
-      setScannerError(null);
+    const hasUsefulData = Boolean(parsed.citizen_id || parsed.name || parsed.permanent_address);
+
+    if (!hasUsefulData) {
+      setScannerError("Đã quét QR nhưng chưa nhận diện được thông tin CCCD. Vui lòng thử lại hoặc nhập tay.");
+      return;
+    }
+
+    setScannerError(null);
+
+    if (isMobile && !editingItem) {
+      setFormStep("entry");
       window.setTimeout(() => {
         setFocus("phone");
-        document.querySelector('input[name="phone"]')?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }, 120);
+      }, 150);
+      return;
     }
-  }, [setFocus, setValue]);
+
+    window.setTimeout(() => {
+      setFocus("phone");
+      document.querySelector('input[name="phone"]')?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+  }, [editingItem, isMobile, setFocus, setValue]);
 
   return (
     <section className="page">
@@ -279,17 +324,7 @@ export function FarmersPage() {
           <p>Quản lý thông tin người bán lúa, CCCD, tài khoản ngân hàng và liên hệ.</p>
         </div>
         <div className="header-actions">
-          <Button
-            type="button"
-            onClick={() => {
-              setEditingItem(null);
-              reset(emptyValues);
-              setScanRawText("");
-              setParsedCitizenQr(null);
-              setScannerOpen(false);
-              setFormOpen(true);
-            }}
-          >
+          <Button type="button" onClick={openAddForm}>
             <Plus size={18} aria-hidden="true" />
             Thêm nông dân
           </Button>
@@ -299,46 +334,102 @@ export function FarmersPage() {
       <div className="crud-grid modal-crud-grid">
         {formOpen ? (
           <ModalShell wide onClose={clearForm}>
-            <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
-          <div className="card-title-row">
-            <h2>{formTitle}</h2>
-            <div className="row-actions">
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => {
-                  setScannerOpen((current) => !current);
-                  setScannerError(null);
-                }}
-              >
-                <ScanLine size={17} aria-hidden="true" />
-                Quét CCCD
-              </Button>
-              {editingItem ? (
-                <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                  <X size={18} aria-hidden="true" />
-                </button>
+            <form
+              className={`form-card${isMobileAddFlow ? " farmer-form-wizard" : ""}`}
+              onSubmit={handleSubmit(onSubmit)}
+            >
+              <div className="card-title-row">
+                <div className="card-title-copy">
+                  <h2>{formTitle}</h2>
+                  {isMobileAddFlow ? (
+                    <p className="form-step-label">
+                      Bước {showScanStep ? 1 : 2}/2 · {showScanStep ? "Quét CCCD" : "Nhập thông tin"}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="row-actions">
+                  {showEntryStep && isMobileAddFlow ? (
+                    <Button variant="secondary" type="button" onClick={goToScanStep}>
+                      <ScanLine size={17} aria-hidden="true" />
+                      Quét lại
+                    </Button>
+                  ) : null}
+                  {!isMobileAddFlow ? (
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      onClick={() => {
+                        setScannerOpen((current) => !current);
+                        setScannerError(null);
+                      }}
+                    >
+                      <ScanLine size={17} aria-hidden="true" />
+                      Quét CCCD
+                    </Button>
+                  ) : null}
+                  {editingItem ? (
+                    <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {isMobileAddFlow ? (
+                <div className="form-step-progress" aria-hidden="true">
+                  <span className={showScanStep ? "active" : "done"} />
+                  <span className={showEntryStep ? "active" : ""} />
+                </div>
               ) : null}
-            </div>
-          </div>
 
-          {scannerOpen ? (
-            <CitizenQrScanner
-              parsed={parsedCitizenQr}
-              rawText={scanRawText}
-              scannerError={scannerError}
-              onClose={() => setScannerOpen(false)}
-              onError={setScannerError}
-              onScan={applyScannedText}
-            />
-          ) : scanRawText ? (
-            <div className="calculation-box">
-              <span>QR CCCD đã quét gần nhất</span>
-              <small>{scanRawText}</small>
-              {parsedCitizenQr ? <ParserDebug parsed={parsedCitizenQr} /> : null}
-            </div>
-          ) : null}
+              {showScanStep ? (
+                <div className="farmer-scan-step">
+                  <CitizenQrScanner
+                    embedded
+                    parsed={parsedCitizenQr}
+                    rawText={scanRawText}
+                    scannerError={scannerError}
+                    onClose={goToManualEntry}
+                    onManualEntry={goToManualEntry}
+                    onError={setScannerError}
+                    onScan={applyScannedText}
+                  />
+                  {scannerError ? <div className="alert error-alert">{scannerError}</div> : null}
+                </div>
+              ) : null}
 
+              {showDesktopScanner ? (
+                <CitizenQrScanner
+                  parsed={parsedCitizenQr}
+                  rawText={scanRawText}
+                  scannerError={scannerError}
+                  onClose={() => setScannerOpen(false)}
+                  onError={setScannerError}
+                  onScan={applyScannedText}
+                />
+              ) : null}
+
+              {showEntryStep && !isMobileAddFlow && scanRawText ? (
+                <div className="calculation-box">
+                  <span>QR CCCD đã quét gần nhất</span>
+                  <small>{scanRawText}</small>
+                  {parsedCitizenQr ? <ParserDebug parsed={parsedCitizenQr} /> : null}
+                </div>
+              ) : null}
+
+              {showEntryStep && isMobileAddFlow && parsedCitizenQr ? (
+                <div className="farmer-scan-summary">
+                  <strong>Đã quét: {parsedCitizenQr.name || "CCCD"}</strong>
+                  <span>
+                    {parsedCitizenQr.citizen_id ? `CCCD ${parsedCitizenQr.citizen_id}` : ""}
+                    {parsedCitizenQr.citizen_id && parsedCitizenQr.date_of_birth ? " · " : ""}
+                    {parsedCitizenQr.date_of_birth ? `Sinh ${parsedCitizenQr.date_of_birth}` : ""}
+                  </span>
+                </div>
+              ) : null}
+
+              {showEntryStep ? (
+                <>
           <label className="field">
             <RequiredLabel>Tên nông dân</RequiredLabel>
             <input {...register("name")} placeholder="VD: Nguyễn Văn A" />
@@ -418,6 +509,8 @@ export function FarmersPage() {
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nông dân"}
           </Button>
+                </>
+              ) : null}
             </form>
           </ModalShell>
         ) : null}
@@ -541,7 +634,9 @@ type CitizenQrScannerProps = {
   parsed: ParsedCitizenQr | null;
   rawText: string;
   scannerError: string | null;
+  embedded?: boolean;
   onClose: () => void;
+  onManualEntry?: () => void;
   onError: (message: string | null) => void;
   onScan: (rawText: string) => void;
 };
@@ -550,7 +645,9 @@ function CitizenQrScanner({
   parsed,
   rawText,
   scannerError,
+  embedded = false,
   onClose,
+  onManualEntry,
   onError,
   onScan,
 }: CitizenQrScannerProps) {
@@ -584,7 +681,7 @@ function CitizenQrScanner({
   }
 
   const handleDecodedText = useCallback((decodedText: string, result?: QrScanner.ScanResult) => {
-    if (result) {
+    if (result && !embedded) {
       const video = videoRef.current;
       const estimation = estimateQrDistanceHint(
         { result: { resultPoints: result.cornerPoints } },
@@ -606,7 +703,7 @@ function CitizenQrScanner({
     markRealtimeDetected();
     setUploadScanStatus("Đã nhận dữ liệu QR.");
     onScan(decodedText);
-  }, [onScan]);
+  }, [embedded, onScan]);
 
   useEffect(() => {
     QrScanner.listCameras(false)
@@ -652,7 +749,7 @@ function CitizenQrScanner({
           scanner.destroy();
           return;
         }
-        setRealtimeScanStatus("Đang dò QR realtime...");
+        setRealtimeScanStatus(embedded ? "Đưa mã QR CCCD vào khung camera" : "Đang dò QR realtime...");
         stopFullFrameScanLoop = startRobustFrameScanLoop(video, handleDecodedText, setRealtimeScanStatus);
         void QrScanner.listCameras(true).then((nextCameras) => {
           if (!active) return;
@@ -667,7 +764,9 @@ function CitizenQrScanner({
       })
       .catch((scanError: unknown) => {
         if (!active) return;
-        onError(formatScannerError(scanError));
+        if (!embedded) {
+          onError(formatScannerError(scanError));
+        }
       });
 
     return () => {
@@ -682,7 +781,7 @@ function CitizenQrScanner({
         qrScannerRef.current = null;
       }
     };
-  }, [handleDecodedText, onError, selectedCameraId]);
+  }, [embedded, handleDecodedText, onError, selectedCameraId]);
 
   function switchCamera() {
     if (cameras.length === 0) return;
@@ -723,7 +822,12 @@ function CitizenQrScanner({
       onScan(decodedText);
     } catch (scanError) {
       setUploadScanStatus("");
-      onError(`Không đọc được QR từ ảnh đã chọn: ${formatErrorMessage(scanError)}`);
+      const message = `Không đọc được QR từ ảnh: ${formatErrorMessage(scanError)}`;
+      if (embedded) {
+        setRealtimeScanStatus(message);
+      } else {
+        onError(message);
+      }
     } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -766,39 +870,45 @@ function CitizenQrScanner({
     cameras.find((camera) => camera.id === selectedCameraId)?.label ||
     (selectedCameraId ? "Camera đã chọn" : "Camera sau tự động");
 
-  return (
-    <div className="form-card">
-      <div className="card-title-row">
-        <h2>Quét CCCD</h2>
-      </div>
-      <div className="scanner-action-group">
-        <div className="scanner-primary-actions">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(event) => void scanUploadedFile(event.target.files?.[0] ?? null)}
-          />
-          <Button variant="secondary" type="button" onClick={() => void captureFrameAndScan()}>
-            <Camera size={17} aria-hidden="true" />
-            Chụp để quét
-          </Button>
-          <Button variant="secondary" type="button" onClick={() => fileInputRef.current?.click()}>
-            <ImageUp size={17} aria-hidden="true" />
-            Upload QR
-          </Button>
+  const content = (
+    <>
+      {!embedded ? (
+        <div className="card-title-row">
+          <h2>Quét CCCD</h2>
         </div>
-        <div className="scanner-secondary-actions">
-          <Button variant="secondary" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
-            Đổi camera
-          </Button>
-          <Button variant="secondary" type="button" onClick={onClose} aria-label="Đóng scanner">
-            <X size={18} aria-hidden="true" />
-            Đóng quét
-          </Button>
+      ) : null}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => void scanUploadedFile(event.target.files?.[0] ?? null)}
+      />
+
+      {!embedded ? (
+        <div className="scanner-action-group">
+          <div className="scanner-primary-actions">
+            <Button variant="secondary" type="button" onClick={() => void captureFrameAndScan()}>
+              <Camera size={17} aria-hidden="true" />
+              Chụp để quét
+            </Button>
+            <Button variant="secondary" type="button" onClick={() => fileInputRef.current?.click()}>
+              <ImageUp size={17} aria-hidden="true" />
+              Upload QR
+            </Button>
+          </div>
+          <div className="scanner-secondary-actions">
+            <Button variant="secondary" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
+              Đổi camera
+            </Button>
+            <Button variant="secondary" type="button" onClick={onClose} aria-label="Đóng scanner">
+              <X size={18} aria-hidden="true" />
+              Đóng quét
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="scanner-frame">
         <div className="qr-scanner">
@@ -806,31 +916,63 @@ function CitizenQrScanner({
         </div>
       </div>
 
-      <div className="scan-progress-card" aria-live="polite">
-        <div className="scan-progress-head">
-          <span>Tiến trình quét</span>
-          <strong>{scanProgressPercent}%</strong>
-        </div>
-        <div className="scan-progress-track">
-          <span style={{ width: `${scanProgressPercent}%` }} />
-        </div>
-        <small>{realtimeScanStatus}</small>
-        <small className={`scan-distance-hint ${qrDistanceLevel}`}>{qrDistanceHint}</small>
-      </div>
-
-      {scannerError ? (
-        <div className="alert error-alert">
-          <strong>Lỗi camera:</strong> {scannerError} Bạn vẫn có thể nhập thông tin CCCD thủ công.
-        </div>
+      {embedded ? (
+        <>
+          <p className="scanner-status-line" aria-live="polite">
+            {uploadScanStatus || realtimeScanStatus}
+          </p>
+          <div className="farmer-scan-actions">
+            <Button
+              className="farmer-scan-action-button"
+              variant="secondary"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <ImageUp size={17} aria-hidden="true" />
+              Chọn ảnh QR
+            </Button>
+            {onManualEntry ? (
+              <Button className="farmer-scan-action-button" variant="secondary" type="button" onClick={onManualEntry}>
+                <PenLine size={17} aria-hidden="true" />
+                Nhập tay
+              </Button>
+            ) : null}
+          </div>
+          {cameras.length >= 2 ? (
+            <Button className="farmer-scan-switch-camera" variant="ghost" size="sm" type="button" onClick={switchCamera}>
+              Đổi camera
+            </Button>
+          ) : null}
+        </>
       ) : (
-        <p className="section-hint">
-          Đưa mã QR vào khung camera. Hệ thống quét realtime liên tục. Đang dùng: {currentCameraLabel}.
-        </p>
+        <>
+          <div className="scan-progress-card" aria-live="polite">
+            <div className="scan-progress-head">
+              <span>Tiến trình quét</span>
+              <strong>{scanProgressPercent}%</strong>
+            </div>
+            <div className="scan-progress-track">
+              <span style={{ width: `${scanProgressPercent}%` }} />
+            </div>
+            <small>{realtimeScanStatus}</small>
+            <small className={`scan-distance-hint ${qrDistanceLevel}`}>{qrDistanceHint}</small>
+          </div>
+
+          {scannerError ? (
+            <div className="alert error-alert">
+              <strong>Lỗi camera:</strong> {scannerError} Bạn vẫn có thể nhập thông tin CCCD thủ công.
+            </div>
+          ) : (
+            <p className="section-hint">
+              Đưa mã QR vào khung camera. Hệ thống quét realtime liên tục. Đang dùng: {currentCameraLabel}.
+            </p>
+          )}
+
+          {uploadScanStatus ? <p className="section-hint">{uploadScanStatus}</p> : null}
+        </>
       )}
 
-      {uploadScanStatus ? <p className="section-hint">{uploadScanStatus}</p> : null}
-
-      {rawText ? (
+      {!embedded && rawText ? (
         <details className="scan-debug-details">
           <summary>Xem dữ liệu QR đã quét</summary>
           <label className="field">
@@ -840,8 +982,14 @@ function CitizenQrScanner({
           {parsed ? <ParserDebug parsed={parsed} /> : null}
         </details>
       ) : null}
-    </div>
+    </>
   );
+
+  if (embedded) {
+    return <div className="citizen-qr-scanner-embedded">{content}</div>;
+  }
+
+  return <div className="form-card">{content}</div>;
 }
 
 function findBestRearCamera(cameras: Array<{ id: string; label: string }>) {

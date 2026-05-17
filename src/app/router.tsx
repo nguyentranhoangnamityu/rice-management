@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { AppLayout } from "../components/layout/AppLayout";
+import { HomeRedirect } from "../components/layout/HomeRedirect";
+import { MobileMenuPage } from "../components/layout/MobileMenuPage";
 import { AuthorizationLettersPage } from "../pages/authorization-letters/AuthorizationLettersPage";
 import { AttachmentsPage } from "../pages/attachments/AttachmentsPage";
 import { BrokersPage } from "../pages/brokers/BrokersPage";
@@ -27,7 +29,8 @@ export function AppRouter() {
       <Route path="login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<HomeRedirect />} />
+          <Route path="menu" element={<MobileMenuPage />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="rice-types" element={<RiceTypesPage />} />
           <Route path="seasons" element={<SeasonsPage />} />
@@ -48,7 +51,7 @@ export function AppRouter() {
           <Route path="exports" element={<ExportsPage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

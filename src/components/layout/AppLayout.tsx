@@ -1,44 +1,16 @@
-import {
-  Banknote,
-  Factory,
-  FileArchive,
-  FileDown,
-  FileText,
-  Flag,
-  Home,
-  Landmark,
-  LogOut,
-  Map,
-  ReceiptText,
-  Sprout,
-  Truck,
-  Users,
-  Wheat,
-} from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { LogOut } from "lucide-react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
-
-const navigation = [
-  { to: "/dashboard", label: "Tổng quan", icon: Home },
-  { to: "/rice-types", label: "Loại lúa", icon: Wheat },
-  { to: "/seasons", label: "Mùa vụ", icon: Flag },
-  { to: "/farmers", label: "Nông dân", icon: Sprout },
-  { to: "/brokers", label: "Cò lúa", icon: Users },
-  { to: "/purchase-slips", label: "Phiếu mua", icon: ReceiptText },
-  { to: "/authorization-letters", label: "Giấy ủy quyền", icon: FileText },
-  { to: "/transporter-boats", label: "Ghe vận chuyển", icon: Truck },
-  { to: "/transport-trips", label: "Chuyến ghe", icon: Truck },
-  { to: "/transport-routes", label: "Tuyến vận chuyển", icon: Map },
-  { to: "/factories", label: "Nhà máy", icon: Factory },
-  { to: "/processing-records", label: "Sấy xay xát", icon: Landmark },
-  { to: "/debts", label: "Công nợ", icon: Banknote },
-  { to: "/attachments", label: "Chứng từ", icon: FileArchive },
-  { to: "/exports", label: "Xuất file", icon: FileDown },
-];
+import { navigation } from "../../config/navigation";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { MobileTopBar } from "./MobileTopBar";
 
 export function AppLayout() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isMobile = useIsMobile();
+  const isMenuRoute = location.pathname === "/menu";
 
   async function handleLogout() {
     await signOut();
@@ -46,36 +18,44 @@ export function AppLayout() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="Điều hướng chính">
-        <div className="brand">
-          <div className="brand-mark">RM</div>
-          <div>
-            <strong>Quản lý lúa</strong>
-            <span>Rice Management</span>
+    <div className={`app-shell${isMobile ? " app-shell-mobile" : ""}`}>
+      {!isMobile ? (
+        <aside className="sidebar" aria-label="Điều hướng chính">
+          <div className="brand">
+            <div className="brand-mark">RM</div>
+            <div>
+              <strong>Quản lý lúa</strong>
+              <span>Rice Management</span>
+            </div>
           </div>
-        </div>
 
-        <nav className="nav-list">
-          {navigation.map((item) => (
-            <NavLink key={item.to} to={item.to} className="nav-link">
-              <item.icon aria-hidden="true" size={19} strokeWidth={2} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
+          <nav className="nav-list">
+            {navigation.map((item) => (
+              <NavLink key={item.to} to={item.to} className="nav-link">
+                <item.icon aria-hidden="true" size={19} strokeWidth={2} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </nav>
 
-        <div className="sidebar-footer">
-          <button className="logout-button" type="button" onClick={() => void handleLogout()}>
-            <LogOut aria-hidden="true" size={19} strokeWidth={2} />
-            <span>Đăng xuất</span>
-          </button>
-        </div>
-      </aside>
+          <div className="sidebar-footer">
+            <button className="logout-button" type="button" onClick={() => void handleLogout()}>
+              <LogOut aria-hidden="true" size={19} strokeWidth={2} />
+              <span>Đăng xuất</span>
+            </button>
+          </div>
+        </aside>
+      ) : null}
 
-      <main className="main-content">
-        <Outlet />
-      </main>
+      <div className="app-main-column">
+        {isMobile && !isMenuRoute ? <MobileTopBar /> : null}
+
+        <main
+          className={`main-content${isMobile && isMenuRoute ? " main-content-menu" : ""}${isMobile && !isMenuRoute ? " main-content-mobile-page" : ""}`}
+        >
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
