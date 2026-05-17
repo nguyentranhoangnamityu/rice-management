@@ -730,8 +730,8 @@ a {
   left: 50%;
   z-index: 2;
   transform: translate(-50%, -50%);
-  width: clamp(170px, 58vw, 260px);
-  height: clamp(170px, 58vw, 260px);
+  width: clamp(180px, 62vw, 300px);
+  height: clamp(180px, 62vw, 300px);
   border: 2px dashed rgba(255, 255, 255, 0.92);
   border-radius: 14px;
   box-shadow: 0 0 0 9999px rgba(8, 14, 10, 0.23);
@@ -1041,7 +1041,7 @@ a {
 .qr-scanner {
   overflow: hidden;
   width: 100%;
-  min-height: 280px;
+  min-height: 320px;
   border: 1px solid #dfe6dc;
   border-radius: 8px;
   background: #f8faf7;
@@ -1049,6 +1049,8 @@ a {
 
 .qr-scanner video {
   width: 100% !important;
+  min-height: 320px;
+  object-fit: cover;
   border-radius: 8px;
 }
 

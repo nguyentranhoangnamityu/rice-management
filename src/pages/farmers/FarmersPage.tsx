@@ -3,6 +3,7 @@ import { Camera, Edit2, ImageUp, Plus, ScanLine, Search, Trash2, X } from "lucid
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import type { Html5QrcodeCameraScanConfig } from "html5-qrcode";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ModalShell } from "../../components/ui/ModalShell";
@@ -61,6 +62,11 @@ const emptyValues: FarmerFormValues = {
   address: "",
   note: "",
 };
+
+const QR_SCAN_MIN_SIZE = 180;
+const QR_SCAN_IDEAL_SIZE = 300;
+const QR_CAPTURE_OUTPUT_MIN_SIZE = 480;
+const QR_CAPTURE_OUTPUT_MAX_SIZE = 1100;
 
 function RequiredLabel({ children }: { children: string }) {
   return (
@@ -598,7 +604,9 @@ function CitizenQrScanner({
   useEffect(() => {
     Html5Qrcode.getCameras()
       .then((devices) => {
-        setCameras(devices.map((device) => ({ id: device.id, label: device.label })));
+        const cameraOptions = devices.map((device) => ({ id: device.id, label: device.label }));
+        setCameras(cameraOptions);
+        setSelectedCameraId((currentId) => currentId ?? findBestRearCamera(cameraOptions)?.id ?? null);
       })
       .catch(() => {
         // Camera listing may fail until permission is granted. Scanner start below reports the actionable error.
@@ -610,6 +618,8 @@ function CitizenQrScanner({
     const scanner = new Html5Qrcode(scannerElementId, {
       verbose: false,
       formatsToSupport: getQrCodeFormats(),
+      useBarCodeDetectorIfSupported: true,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     });
     scannerRef.current = scanner;
     stoppedRef.current = false;
@@ -620,11 +630,7 @@ function CitizenQrScanner({
     scanner
       .start(
         cameraConfig,
-        {
-          fps: 20,
-          disableFlip: false,
-          videoConstraints: buildVideoConstraints(selectedCameraId),
-        },
+        buildRealtimeScannerConfig(selectedCameraId),
         (decodedText, decodedResult) => {
           updateDistanceIndicator(decodedResult);
 
@@ -642,6 +648,9 @@ function CitizenQrScanner({
           // Ignore frame-level decode misses; they happen continuously while scanning.
         },
       )
+      .then(() => {
+        void tuneActiveCamera(scanner);
+      })
       .catch((scanError: unknown) => {
         onError(formatScannerError(scanError));
       });
@@ -683,6 +692,8 @@ function CitizenQrScanner({
       const scanner = scannerRef.current ?? new Html5Qrcode(scannerElementId, {
         verbose: false,
         formatsToSupport: getQrCodeFormats(),
+        useBarCodeDetectorIfSupported: true,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
       });
       scannerRef.current = scanner;
       await stopScanner(scanner, stoppedRef);
@@ -834,6 +845,24 @@ function getQrCodeFormats() {
   return undefined;
 }
 
+function buildRealtimeScannerConfig(selectedCameraId: string | null): Html5QrcodeCameraScanConfig {
+  return {
+    fps: 25,
+    qrbox: buildRealtimeQrbox,
+    aspectRatio: 16 / 9,
+    disableFlip: true,
+    videoConstraints: buildVideoConstraints(selectedCameraId),
+  };
+}
+
+function buildRealtimeQrbox(viewfinderWidth: number, viewfinderHeight: number) {
+  const maxSize = Math.max(QR_SCAN_MIN_SIZE, Math.min(viewfinderWidth, viewfinderHeight) - 24);
+  const idealSize = Math.round(Math.min(viewfinderWidth, viewfinderHeight) * 0.68);
+  const size = clamp(idealSize, QR_SCAN_MIN_SIZE, Math.min(QR_SCAN_IDEAL_SIZE, maxSize));
+
+  return { width: size, height: size };
+}
+
 function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConstraints {
   if (selectedCameraId) {
     return {
@@ -841,7 +870,8 @@ function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConst
       width: { ideal: 1920 },
       height: { ideal: 1080 },
       frameRate: { ideal: 30, max: 60 },
-    };
+      resizeMode: "crop-and-scale",
+    } as MediaTrackConstraints;
   }
 
   return {
@@ -849,7 +879,50 @@ function buildVideoConstraints(selectedCameraId: string | null): MediaTrackConst
     width: { ideal: 1920 },
     height: { ideal: 1080 },
     frameRate: { ideal: 30, max: 60 },
-  };
+    resizeMode: "crop-and-scale",
+  } as MediaTrackConstraints;
+}
+
+function findBestRearCamera(cameras: Array<{ id: string; label: string }>) {
+  const preferredTerms = ["environment", "back", "rear", "sau", "main", "wide"];
+  const rejectedTerms = ["front", "user", "facetime", "trước", "truoc"];
+
+  return (
+    cameras.find((camera) => {
+      const label = removeVietnameseMarks(camera.label).toLowerCase();
+      return preferredTerms.some((term) => label.includes(term)) && !rejectedTerms.some((term) => label.includes(term));
+    }) ?? cameras[cameras.length - 1]
+  );
+}
+
+async function tuneActiveCamera(scanner: Html5Qrcode) {
+  try {
+    const capabilities = scanner.getRunningTrackCapabilities() as Record<string, unknown>;
+    const advancedConstraints: Array<Record<string, unknown>> = [];
+
+    if (cameraCapabilityIncludes(capabilities, "focusMode", "continuous")) {
+      advancedConstraints.push({ focusMode: "continuous" });
+    }
+    if (cameraCapabilityIncludes(capabilities, "exposureMode", "continuous")) {
+      advancedConstraints.push({ exposureMode: "continuous" });
+    }
+    if (cameraCapabilityIncludes(capabilities, "whiteBalanceMode", "continuous")) {
+      advancedConstraints.push({ whiteBalanceMode: "continuous" });
+    }
+
+    if (advancedConstraints.length === 0) return;
+
+    await scanner.applyVideoConstraints({
+      advanced: advancedConstraints as MediaTrackConstraintSet[],
+    });
+  } catch {
+    // Browser camera APIs differ a lot; realtime scan still works if these hints are not supported.
+  }
+}
+
+function cameraCapabilityIncludes(capabilities: Record<string, unknown>, key: string, value: string) {
+  const candidate = capabilities[key];
+  return Array.isArray(candidate) && candidate.includes(value);
 }
 
 function estimateQrDistanceHint(
@@ -941,22 +1014,23 @@ async function scanFileWithEnhancement(
 
 function buildQrImageVariants(image: HTMLImageElement) {
   const variants: Array<{ canvas: HTMLCanvasElement }> = [];
+  const seen = new Set<string>();
   const minEdge = Math.min(image.naturalWidth, image.naturalHeight);
-  const cropSizes = [0.32, 0.38, 0.45, 0.55, 0.7].map((ratio) =>
+  const cropSizes = [0.28, 0.36, 0.45, 0.56, 0.7, 0.88, 1].map((ratio) =>
     Math.round(minEdge * ratio),
   );
   const centers = [
     [0.5, 0.5],
+    [0.5, 0.42],
+    [0.5, 0.58],
+    [0.42, 0.5],
+    [0.58, 0.5],
     [0.45, 0.45],
     [0.55, 0.45],
     [0.45, 0.55],
     [0.55, 0.55],
-    [0.5, 0.35],
-    [0.5, 0.65],
-    [0.35, 0.5],
-    [0.65, 0.5],
   ];
-  const modes: Array<"raw" | "gray" | "threshold"> = ["raw", "gray", "threshold"];
+  const modes: QrImageVariantMode[] = ["raw", "gray", "contrast", "threshold-low", "threshold-mid", "threshold-high"];
 
   for (const size of cropSizes) {
     for (const [centerXRatio, centerYRatio] of centers) {
@@ -964,6 +1038,9 @@ function buildQrImageVariants(image: HTMLImageElement) {
       const y = clamp(Math.round(image.naturalHeight * centerYRatio - size / 2), 0, image.naturalHeight - size);
 
       for (const mode of modes) {
+        const key = `${x}:${y}:${size}:${mode}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
         variants.push({
           canvas: renderCropVariant(image, x, y, size, mode),
         });
@@ -974,14 +1051,16 @@ function buildQrImageVariants(image: HTMLImageElement) {
   return variants;
 }
 
+type QrImageVariantMode = "raw" | "gray" | "contrast" | "threshold-low" | "threshold-mid" | "threshold-high";
+
 function renderCropVariant(
   image: HTMLImageElement,
   x: number,
   y: number,
   size: number,
-  mode: "raw" | "gray" | "threshold",
+  mode: QrImageVariantMode,
 ) {
-  const outputSize = Math.max(360, Math.min(900, size * 2));
+  const outputSize = Math.max(QR_CAPTURE_OUTPUT_MIN_SIZE, Math.min(QR_CAPTURE_OUTPUT_MAX_SIZE, size * 2));
   const canvas = document.createElement("canvas");
   canvas.width = outputSize;
   canvas.height = outputSize;
@@ -1001,7 +1080,7 @@ function renderCropVariant(
       imageData.data[index] * 0.299 +
       imageData.data[index + 1] * 0.587 +
       imageData.data[index + 2] * 0.114;
-    const value = mode === "threshold" ? (gray < 135 ? 0 : 255) : gray;
+    const value = normalizeQrPixel(gray, mode);
     imageData.data[index] = value;
     imageData.data[index + 1] = value;
     imageData.data[index + 2] = value;
@@ -1009,6 +1088,14 @@ function renderCropVariant(
   context.putImageData(imageData, 0, 0);
 
   return canvas;
+}
+
+function normalizeQrPixel(gray: number, mode: QrImageVariantMode) {
+  if (mode === "threshold-low") return gray < 112 ? 0 : 255;
+  if (mode === "threshold-mid") return gray < 135 ? 0 : 255;
+  if (mode === "threshold-high") return gray < 165 ? 0 : 255;
+  if (mode === "contrast") return clamp(Math.round((gray - 128) * 1.45 + 128), 0, 255);
+  return gray;
 }
 
 function loadImage(file: File) {
