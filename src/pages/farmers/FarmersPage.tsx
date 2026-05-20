@@ -7,7 +7,6 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import QrScanner from "qr-scanner";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
 import { ModalShell } from "../../components/ui/ModalShell";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -338,10 +337,10 @@ export function FarmersPage() {
           <p>Quản lý thông tin người bán lúa, CCCD, tài khoản ngân hàng và liên hệ.</p>
         </div>
         <div className="header-actions">
-          <Button type="button" onClick={openAddForm}>
+          <button className="primary-button" type="button" onClick={openAddForm}>
             <Plus size={18} aria-hidden="true" />
             Thêm nông dân
-          </Button>
+          </button>
         </div>
       </header>
 
@@ -363,14 +362,14 @@ export function FarmersPage() {
                 </div>
                 <div className="row-actions">
                   {showEntryStep && isMobileAddFlow ? (
-                    <Button variant="secondary" type="button" onClick={goToScanStep}>
+                    <button className="secondary-button" type="button" onClick={goToScanStep}>
                       <ScanLine size={17} aria-hidden="true" />
                       Quét lại
-                    </Button>
+                    </button>
                   ) : null}
                   {!isMobileAddFlow ? (
-                    <Button
-                      variant="secondary"
+                    <button
+                      className="secondary-button"
                       type="button"
                       onClick={() => {
                         setScannerOpen((current) => !current);
@@ -379,11 +378,6 @@ export function FarmersPage() {
                     >
                       <ScanLine size={17} aria-hidden="true" />
                       Quét CCCD
-                    </Button>
-                  ) : null}
-                  {editingItem ? (
-                    <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                      <X size={18} aria-hidden="true" />
                     </button>
                   ) : null}
                 </div>
@@ -519,10 +513,10 @@ export function FarmersPage() {
             <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
           </label>
 
-          <Button type="submit" disabled={saving}>
+          <button className="primary-button" type="submit" disabled={saving}>
             <Plus size={18} aria-hidden="true" />
             {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm nông dân"}
-          </Button>
+          </button>
                 </>
               ) : null}
             </form>
@@ -656,13 +650,13 @@ export function FarmersPage() {
               không?
             </p>
             <div className="post-create-actions">
-              <Button type="button" onClick={() => goToCreatePurchaseSlip(createdFarmerPrompt)}>
+              <button className="primary-button" type="button" onClick={() => goToCreatePurchaseSlip(createdFarmerPrompt)}>
                 <Plus size={18} aria-hidden="true" />
                 Tạo phiếu mua
-              </Button>
-              <Button variant="secondary" type="button" onClick={() => setCreatedFarmerPrompt(null)}>
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setCreatedFarmerPrompt(null)}>
                 Để sau
-              </Button>
+              </button>
             </div>
           </div>
         </ModalShell>
@@ -930,23 +924,23 @@ function CitizenQrScanner({
       {!embedded ? (
         <div className="scanner-action-group">
           <div className="scanner-primary-actions">
-            <Button variant="secondary" type="button" onClick={() => void captureFrameAndScan()}>
+            <button className="secondary-button" type="button" onClick={() => void captureFrameAndScan()}>
               <Camera size={17} aria-hidden="true" />
               Chụp để quét
-            </Button>
-            <Button variant="secondary" type="button" onClick={() => fileInputRef.current?.click()}>
+            </button>
+            <button className="secondary-button" type="button" onClick={() => fileInputRef.current?.click()}>
               <ImageUp size={17} aria-hidden="true" />
               Upload QR
-            </Button>
+            </button>
           </div>
           <div className="scanner-secondary-actions">
-            <Button variant="secondary" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
+            <button className="secondary-button" type="button" onClick={switchCamera} disabled={cameras.length < 2}>
               Đổi camera
-            </Button>
-            <Button variant="secondary" type="button" onClick={onClose} aria-label="Đóng scanner">
+            </button>
+            <button className="secondary-button" type="button" onClick={onClose} aria-label="Đóng scanner">
               <X size={18} aria-hidden="true" />
               Đóng quét
-            </Button>
+            </button>
           </div>
         </div>
       ) : null}
@@ -963,26 +957,25 @@ function CitizenQrScanner({
             {uploadScanStatus || realtimeScanStatus}
           </p>
           <div className="farmer-scan-actions">
-            <Button
-              className="farmer-scan-action-button"
-              variant="secondary"
+            <button
+              className="secondary-button farmer-scan-action-button"
               type="button"
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageUp size={17} aria-hidden="true" />
               Chọn ảnh QR
-            </Button>
+            </button>
             {onManualEntry ? (
-              <Button className="farmer-scan-action-button" variant="secondary" type="button" onClick={onManualEntry}>
+              <button className="secondary-button farmer-scan-action-button" type="button" onClick={onManualEntry}>
                 <PenLine size={17} aria-hidden="true" />
                 Nhập tay
-              </Button>
+              </button>
             ) : null}
           </div>
           {cameras.length >= 2 ? (
-            <Button className="farmer-scan-switch-camera" variant="ghost" size="sm" type="button" onClick={switchCamera}>
+            <button className="secondary-button farmer-scan-switch-camera" type="button" onClick={switchCamera}>
               Đổi camera
-            </Button>
+            </button>
           ) : null}
         </>
       ) : (
