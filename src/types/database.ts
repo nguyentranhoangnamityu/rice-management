@@ -9,6 +9,36 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      app_users: {
+        Row: {
+          id: string;
+          auth_user_id: string | null;
+          email: string;
+          full_name: string;
+          phone: string | null;
+          role: Database["public"]["Enums"]["app_role"];
+          status: Database["public"]["Enums"]["app_user_status"];
+          note: string | null;
+          last_sign_in_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          auth_user_id?: string | null;
+          email: string;
+          full_name: string;
+          phone?: string | null;
+          role?: Database["public"]["Enums"]["app_role"];
+          status?: Database["public"]["Enums"]["app_user_status"];
+          note?: string | null;
+          last_sign_in_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["app_users"]["Insert"]>;
+        Relationships: [];
+      };
       attachments: {
         Row: {
           id: string;
@@ -772,6 +802,8 @@ export type Database = {
     };
     Functions: Record<string, never>;
     Enums: {
+      app_role: "owner" | "manager" | "accountant" | "staff";
+      app_user_status: "pending" | "active" | "inactive";
       authorization_letter_status: "draft" | "active" | "expired" | "cancelled";
       attachment_type:
         | "citizen_id"

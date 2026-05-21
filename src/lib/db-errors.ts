@@ -3,6 +3,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 type DbErrorLike = Pick<PostgrestError, "message" | "code"> | { message: string; code?: string } | null | undefined;
 
 const TABLE_LABELS: Record<string, string> = {
+  app_users: "nhân viên",
   authorization_letters: "giấy ủy quyền",
   authorization_letter_purchase_slips: "liên kết giấy ủy quyền – phiếu mua",
   trips: "chuyến hàng",
@@ -22,6 +23,7 @@ const TABLE_LABELS: Record<string, string> = {
 };
 
 const ENTITY_LABELS: Record<string, string> = {
+  app_users: "nhân viên",
   farmers: "nông dân",
   brokers: "cò lúa",
   seasons: "mùa vụ",
@@ -137,6 +139,8 @@ const FK_CONSTRAINT_MESSAGES: Record<string, string> = {
 };
 
 const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
+  app_users_email_key: "Email nhân viên đã tồn tại. Vui lòng dùng email khác.",
+  app_users_auth_user_id_key: "Tài khoản đăng nhập này đã được gắn với nhân viên khác.",
   seasons_name_key: "Tên mùa vụ đã tồn tại. Vui lòng dùng tên khác.",
   rice_types_name_key: "Tên loại lúa đã tồn tại. Vui lòng dùng tên khác.",
   transport_trips_code_key: "Mã chuyến ghe đã tồn tại. Vui lòng dùng mã khác.",

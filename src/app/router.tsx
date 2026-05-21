@@ -22,6 +22,7 @@ import { TransporterBoatsPage } from "../pages/transporter-boats/TransporterBoat
 import { TransportRoutesPage } from "../pages/transport-routes/TransportRoutesPage";
 import { TripsPage } from "../pages/trips/TripsPage";
 import { TripDetailPage } from "../pages/trips/TripDetailPage";
+import { UsersPage } from "../pages/users/UsersPage";
 import { WarehousesPage } from "../pages/warehouses/WarehousesPage";
 
 export function AppRouter() {
@@ -51,10 +52,10 @@ export function AppRouter() {
           <Route path="debts" element={<DebtsPage />} />
           <Route path="attachments" element={<AttachmentsPage />} />
           <Route path="exports" element={<ExportsPage />} />
+          <Route path="users" element={<UsersPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
-

@@ -2,10 +2,14 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import type { Tables } from "../types/database";
+
+type AppUser = Tables<"app_users">;
 
 type AuthContextValue = {
   loading: boolean;
   session: Session | null;
+  profile: AppUser | null;
   signOut: () => Promise<void>;
 };
 
@@ -17,14 +21,36 @@ type AuthProviderProps = {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
+    async function loadProfile(nextSession: Session | null) {
+      if (!nextSession?.user.id) {
+        setProfile(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("app_users")
+        .select("*")
+        .eq("auth_user_id", nextSession.user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Unable to read app user profile", error);
+        setProfile(null);
+        return;
+      }
+
+      setProfile(data);
+    }
+
     supabase.auth
       .getSession()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!active) {
           return;
         }
@@ -34,6 +60,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         setSession(data.session);
+        await loadProfile(data.session);
       })
       .finally(() => {
         if (active) {
@@ -45,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
-      setLoading(false);
+      void loadProfile(nextSession).finally(() => setLoading(false));
     });
 
     return () => {
@@ -58,6 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     () => ({
       loading,
       session,
+      profile,
       signOut: async () => {
         const { error } = await supabase.auth.signOut();
 
@@ -66,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       },
     }),
-    [loading, session],
+    [loading, session, profile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

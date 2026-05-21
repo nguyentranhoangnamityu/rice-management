@@ -1,4 +1,5 @@
 export type ListTableKey =
+  | "app_users"
   | "farmers"
   | "brokers"
   | "rice_types"
@@ -22,6 +23,7 @@ type ListTableConfig = {
 };
 
 export const listTableConfig: Record<ListTableKey, ListTableConfig> = {
+  app_users: { orderColumn: "created_at", searchColumns: ["full_name", "email", "phone", "note"] },
   farmers: { orderColumn: "created_at", searchColumns: ["name", "phone", "citizen_id"] },
   brokers: { orderColumn: "created_at", searchColumns: ["name", "phone", "citizen_id"] },
   rice_types: { orderColumn: "created_at", searchColumns: ["name", "note"] },

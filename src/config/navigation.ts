@@ -16,6 +16,7 @@ import {
   ReceiptText,
   Sprout,
   Truck,
+  UserCog,
   Users,
   Wheat,
 } from "lucide-react";
@@ -48,6 +49,7 @@ export const navigation: NavItem[] = [
   { to: "/debts", label: "Công nợ", icon: Banknote, accent: "#c06878", pastel: "#fce4e8" },
   { to: "/attachments", label: "Chứng từ", icon: FileArchive, accent: "#7a7870", pastel: "#ebeae6" },
   { to: "/exports", label: "Xuất file", icon: FileDown, accent: "#3d8f6a", pastel: "#e0f5ec" },
+  { to: "/users", label: "Nhân viên", icon: UserCog, accent: "#4d6f8f", pastel: "#e1eaf7" },
 ];
 
 export function getNavTitle(pathname: string) {
