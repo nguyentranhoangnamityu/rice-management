@@ -7,6 +7,7 @@ import { ModalShell } from "../../components/ui/ModalShell";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { exportExcel, exportPdf } from "../../lib/export";
+import type { QueryBuilder } from "../../lib/list-query";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
@@ -65,7 +66,7 @@ const emptyValues: RecordFormValues = {
 };
 
 export function ProcessingRecordsPage() {
-  const listFilter = useCallback((query: ReturnType<typeof supabase.from>) => query.eq("service_type", "milling"), []);
+  const listFilter = useCallback((query: QueryBuilder) => query.eq("service_type", "milling"), []);
 
   const queryOptions = useMemo(() => ({ applyFilter: listFilter }), [listFilter]);
 

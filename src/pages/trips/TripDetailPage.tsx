@@ -1,4 +1,4 @@
-import { ArrowLeft, Calendar, Coins, Info, MapPin, Package, Percent, Ship, TrendingUp, Edit2, Trash2, Plus, Check, X, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Calendar, Coins, Info, Package, Percent, Ship, TrendingUp, Edit2, Trash2, Plus, Check, X, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatDbError } from "../../lib/db-errors";
@@ -47,6 +47,7 @@ type DetailedTrip = Trip & {
 type DetailedPurchaseSlip = PurchaseSlip & {
   farmer?: Farmer | null;
   broker?: Broker | null;
+  season?: Season | null;
   riceType?: RiceType | null;
 };
 
@@ -303,6 +304,7 @@ export function TripDetailPage() {
           ...slip,
           farmer: slip.farmer_id ? farmerMap.get(slip.farmer_id) ?? null : null,
           broker: slip.broker_id ? brokerMap.get(slip.broker_id) ?? null : null,
+          season: slip.season_id ? seasonMap.get(slip.season_id) ?? null : null,
           riceType: slip.rice_type_id ? riceTypeMap.get(slip.rice_type_id) ?? null : null,
         }))
       );
@@ -355,6 +357,7 @@ export function TripDetailPage() {
             ...slip,
             farmer: slip.farmer_id ? farmerMap.get(slip.farmer_id) ?? null : null,
             broker: slip.broker_id ? brokerMap.get(slip.broker_id) ?? null : null,
+            season: slip.season_id ? seasonMap.get(slip.season_id) ?? null : null,
             riceType: slip.rice_type_id ? riceTypeMap.get(slip.rice_type_id) ?? null : null,
           }))
         );
@@ -701,10 +704,10 @@ export function TripDetailPage() {
       const payload = {
         trip_id: id,
         factory_id: dryingForm.factory_id,
-        processed_date: toNullable(dryingForm.processed_date),
+        processed_date: toNullable(dryingForm.processed_date) ?? trip.start_date ?? new Date().toISOString().slice(0, 10),
         service_type: "drying" as const,
         season_id: trip.season_id,
-        rice_type_id: trip.rice_type_id,
+        rice_type_id: trip.rice_type_id ?? "",
         input_weight_kg: Number(dryingForm.input_weight_kg) || 0,
         output_weight_kg: Number(dryingForm.output_weight_kg) || 0,
         loss_weight_kg: loss.lossWeight,
@@ -720,7 +723,6 @@ export function TripDetailPage() {
         if (prErr) throw prErr;
 
         // Also sync the trip expense if exists
-        const expenseName = `Chi phí sấy lúa [Đợt ${dryingForm.id.slice(0, 4)}]`;
         await supabase
           .from("trip_expenses")
           .update({
@@ -780,6 +782,7 @@ export function TripDetailPage() {
   };
 
   const deleteDryingRecord = async (record: ProcessingRecord) => {
+    if (!id) return;
     if (!window.confirm("Bạn có chắc chắn muốn xóa nhật ký sấy lúa này?")) return;
     setError(null);
     try {
@@ -896,6 +899,7 @@ export function TripDetailPage() {
   };
 
   const deleteInventoryRecord = async (transaction: InventoryTransaction) => {
+    if (!id) return;
     if (!window.confirm("Bạn có chắc chắn muốn xóa phiếu nhập kho này?")) return;
     setError(null);
     try {
@@ -935,10 +939,10 @@ export function TripDetailPage() {
       const payload = {
         trip_id: id,
         factory_id: millingForm.factory_id,
-        processed_date: toNullable(millingForm.processed_date),
+        processed_date: toNullable(millingForm.processed_date) ?? trip.start_date ?? new Date().toISOString().slice(0, 10),
         service_type: "milling" as const,
         season_id: trip.season_id,
-        rice_type_id: trip.rice_type_id,
+        rice_type_id: trip.rice_type_id ?? "",
         input_weight_kg: Number(millingForm.input_weight_kg) || 0,
         output_weight_kg: Number(millingForm.output_weight_kg) || 0,
         loss_weight_kg: loss.lossWeight,
@@ -1013,6 +1017,7 @@ export function TripDetailPage() {
   };
 
   const deleteMillingRecord = async (record: ProcessingRecord) => {
+    if (!id) return;
     if (!window.confirm("Bạn có chắc chắn muốn xóa nhật ký xay xát này?")) return;
     setError(null);
     try {
@@ -1046,7 +1051,7 @@ export function TripDetailPage() {
       const payload = {
         trip_id: id,
         buyer_name: saleForm.buyer_name,
-        sale_date: toNullable(saleForm.sale_date),
+        sale_date: toNullable(saleForm.sale_date) ?? undefined,
         rice_weight_kg: Number(saleForm.rice_weight_kg) || 0,
         unit_price: Number(saleForm.unit_price) || 0,
         total_amount: Number(saleForm.total_amount) || 0,
@@ -1253,15 +1258,6 @@ export function TripDetailPage() {
       note: sale.note || "",
     });
   };
-
-  const currentStatus = useMemo(() => {
-    if (!trip) return null;
-    return statusOptions.find((opt) => opt.value === trip.status) ?? {
-      value: trip.status,
-      label: trip.status,
-      colorClass: "badge-draft",
-    };
-  }, [trip]);
 
   if (loading) {
     return (

@@ -4,7 +4,7 @@ import { getPageRange, getTotalPages, type PaginatedResult } from "./pagination"
 import { supabase } from "./supabase";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type QueryBuilder = any;
+export type QueryBuilder = any;
 
 export type ListQueryOptions = {
   search?: string;

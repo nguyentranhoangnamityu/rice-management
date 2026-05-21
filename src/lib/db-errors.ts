@@ -174,12 +174,22 @@ function formatUniqueViolation(message: string) {
   return "Dữ liệu bị trùng. Vui lòng kiểm tra lại thông tin đã nhập.";
 }
 
-/** Chuyển lỗi Supabase/PostgreSQL sang thông báo tiếng Việt dễ hiểu. */
-export function formatDbError(error: DbErrorLike, fallback = "Đã xảy ra lỗi. Vui lòng thử lại."): string {
-  if (!error?.message?.trim()) return fallback;
+function toDbErrorLike(error: DbErrorLike | unknown): DbErrorLike {
+  if (!error || typeof error !== "object") return null;
+  if ("message" in error && typeof (error as { message: unknown }).message === "string") {
+    return error as DbErrorLike;
+  }
+  if (error instanceof Error) return { message: error.message };
+  return null;
+}
 
-  const message = error.message;
-  const code = "code" in error ? error.code : undefined;
+/** Chuyển lỗi Supabase/PostgreSQL sang thông báo tiếng Việt dễ hiểu. */
+export function formatDbError(error: DbErrorLike | unknown, fallback = "Đã xảy ra lỗi. Vui lòng thử lại."): string {
+  const normalized = toDbErrorLike(error);
+  if (!normalized?.message?.trim()) return fallback;
+
+  const message = normalized.message;
+  const code = "code" in normalized ? normalized.code : undefined;
 
   if (code === "23503" || message.includes("foreign key constraint")) {
     return formatForeignKeyError(message);

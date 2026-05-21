@@ -7,7 +7,7 @@ import { ModalShell } from "../../components/ui/ModalShell";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
-import type { Enums, Tables } from "../../types/database";
+import type { Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
 import {
   formatTransportPriceBasis,
@@ -21,8 +21,6 @@ type TransportRouteStop = Tables<"transport_route_stops">;
 type RouteWithStops = TransportRoute & {
   stops: TransportRouteStop[];
 };
-
-type TransportPriceBasis = Enums<"transport_price_basis">;
 
 const routeSchema = z.object({
   name: z.string().trim().min(1, "Vui lòng nhập tên tuyến"),

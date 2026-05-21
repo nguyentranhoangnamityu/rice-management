@@ -14,6 +14,7 @@ import {
   syncDryingTripExpense,
 } from "../../lib/drying-record";
 import { formatDbError } from "../../lib/db-errors";
+import type { QueryBuilder } from "../../lib/list-query";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 
@@ -92,7 +93,7 @@ export function DryingPage() {
   const [formOpen, setFormOpen] = useState(false);
 
   const listFilter = useCallback(
-    (query: ReturnType<typeof supabase.from>) => {
+    (query: QueryBuilder) => {
       let next = query.eq("service_type", "drying");
       if (factoryFilter) next = next.eq("factory_id", factoryFilter);
       if (paymentFilter) next = next.eq("payment_status", paymentFilter);
