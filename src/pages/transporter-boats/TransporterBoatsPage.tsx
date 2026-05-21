@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, Eye, Plus, Search, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -168,11 +169,6 @@ export function TransporterBoatsPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
               <div className="card-title-row">
                 <h2>{formTitle}</h2>
-                {editingItem ? (
-                  <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                    <X size={18} aria-hidden="true" />
-                  </button>
-                ) : null}
               </div>
 
               <label className="field">
@@ -261,7 +257,11 @@ export function TransporterBoatsPage() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id}>
-                      <td>{item.boat_name}</td>
+                      <td>
+                        <Link to={`/transporter-boats/${item.id}`} style={{ fontWeight: "700", color: "var(--primary)" }}>
+                          {item.boat_name}
+                        </Link>
+                      </td>
                       <td>{item.owner_name || "-"}</td>
                       <td>{item.phone || "-"}</td>
                       <td>{item.citizen_id || "-"}</td>
@@ -274,6 +274,14 @@ export function TransporterBoatsPage() {
                       </td>
                       <td>
                         <div className="row-actions">
+                          <Link
+                            to={`/transporter-boats/${item.id}`}
+                            className="icon-button"
+                            aria-label="Xem chi tiết"
+                            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                          >
+                            <Eye size={17} aria-hidden="true" />
+                          </Link>
                           <button className="icon-button" type="button" onClick={() => startEdit(item)} aria-label="Sửa">
                             <Edit2 size={17} aria-hidden="true" />
                           </button>

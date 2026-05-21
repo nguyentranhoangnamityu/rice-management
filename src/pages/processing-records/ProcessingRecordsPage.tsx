@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Edit2, FileDown, Plus, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
@@ -12,7 +12,7 @@ import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
 
 type ProcessingRecord = Tables<"processing_records">;
-type TransportTrip = Tables<"transport_trips">;
+type Trip = Tables<"trips">;
 type Factory = Tables<"factories">;
 type Season = Tables<"seasons">;
 type RiceType = Tables<"rice_types">;
@@ -20,16 +20,13 @@ type ServiceType = Enums<"processing_service_type">;
 type PaymentStatus = Enums<"payment_status">;
 
 type ProcessingRecordRow = ProcessingRecord & {
-  trip?: TransportTrip | null;
+  trip?: Trip | null;
   factory?: Factory | null;
   season?: Season | null;
   riceType?: RiceType | null;
 };
 
-const serviceTypeOptions: { value: ServiceType; label: string }[] = [
-  { value: "drying", label: "Sấy" },
-  { value: "milling", label: "Xay xát" },
-];
+const serviceTypeOptions: { value: ServiceType; label: string }[] = [{ value: "milling", label: "Xay xát" }];
 
 const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
   { value: "unpaid", label: "Chưa trả" },
@@ -38,7 +35,7 @@ const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
 ];
 
 const recordSchema = z.object({
-  transport_trip_id: z.string().min(1, "Vui lòng chọn chuyến ghe"),
+  trip_id: z.string().min(1, "Vui lòng chọn chuyến hàng"),
   factory_id: z.string().min(1, "Vui lòng chọn nhà máy"),
   season_id: z.string().optional(),
   service_type: z.enum(["drying", "milling"]),
@@ -54,10 +51,10 @@ const recordSchema = z.object({
 type RecordFormValues = z.infer<typeof recordSchema>;
 
 const emptyValues: RecordFormValues = {
-  transport_trip_id: "",
+  trip_id: "",
   factory_id: "",
   season_id: "",
-  service_type: "drying",
+  service_type: "milling",
   rice_type_id: "",
   input_weight_kg: 0,
   output_weight_kg: 0,
@@ -68,6 +65,10 @@ const emptyValues: RecordFormValues = {
 };
 
 export function ProcessingRecordsPage() {
+  const listFilter = useCallback((query: ReturnType<typeof supabase.from>) => query.eq("service_type", "milling"), []);
+
+  const queryOptions = useMemo(() => ({ applyFilter: listFilter }), [listFilter]);
+
   const {
     items: recordRows,
     page,
@@ -79,8 +80,10 @@ export function ProcessingRecordsPage() {
     loading,
     error: listError,
     refresh,
-  } = useServerPagination<ProcessingRecord>("processing_records");
-  const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
+  } = useServerPagination<ProcessingRecord>("processing_records", {
+    queryOptions,
+  });
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
@@ -102,7 +105,7 @@ export function ProcessingRecordsPage() {
     defaultValues: emptyValues,
   });
 
-  const watchedTripId = watch("transport_trip_id");
+  const watchedTripId = watch("trip_id");
   const watchedInputWeight = watch("input_weight_kg");
   const watchedOutputWeight = watch("output_weight_kg");
   const watchedUnitPrice = watch("unit_price");
@@ -112,7 +115,7 @@ export function ProcessingRecordsPage() {
     unitPrice: watchedUnitPrice,
   });
 
-  const tripMap = useMemo(() => new Map(transportTrips.map((trip) => [trip.id, trip])), [transportTrips]);
+  const tripMap = useMemo(() => new Map(trips.map((trip) => [trip.id, trip])), [trips]);
   const factoryMap = useMemo(
     () => new Map(factories.map((factory) => [factory.id, factory])),
     [factories],
@@ -127,7 +130,7 @@ export function ProcessingRecordsPage() {
     () =>
       recordRows.map((record) => ({
         ...record,
-        trip: tripMap.get(record.transport_trip_id) ?? null,
+        trip: record.trip_id ? tripMap.get(record.trip_id) ?? null : null,
         factory: factoryMap.get(record.factory_id) ?? null,
         season: record.season_id ? seasonMap.get(record.season_id) ?? null : null,
         riceType: riceTypeMap.get(record.rice_type_id) ?? null,
@@ -135,11 +138,11 @@ export function ProcessingRecordsPage() {
     [recordRows, tripMap, factoryMap, seasonMap, riceTypeMap],
   );
 
-  const formTitle = editingItem ? "Sửa phiếu xử lý" : "Thêm phiếu xử lý";
+  const formTitle = editingItem ? "Sửa phiếu xay xát" : "Thêm phiếu xay xát";
 
   async function loadReferenceData() {
     const [tripsResult, factoriesResult, seasonsResult, riceTypesResult] = await Promise.all([
-      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
+      supabase.from("trips").select("*").order("start_date", { ascending: false }),
       supabase.from("factories").select("*").order("name", { ascending: true }),
       supabase.from("seasons").select("*").order("from_date", { ascending: false }),
       supabase.from("rice_types").select("*").order("name", { ascending: true }),
@@ -156,7 +159,7 @@ export function ProcessingRecordsPage() {
       return;
     }
 
-    setTransportTrips(tripsResult.data ?? []);
+    setTrips(tripsResult.data ?? []);
     setFactories(factoriesResult.data ?? []);
     setSeasons(seasonsResult.data ?? []);
     setRiceTypes(riceTypesResult.data ?? []);
@@ -169,19 +172,19 @@ export function ProcessingRecordsPage() {
   useEffect(() => {
     if (!watchedTripId || editingItem) return;
 
-    const trip = transportTrips.find((item) => item.id === watchedTripId);
+    const trip = trips.find((item) => item.id === watchedTripId);
     if (!trip) return;
 
     if (trip.factory_id) setValue("factory_id", trip.factory_id);
     if (trip.season_id) setValue("season_id", trip.season_id);
-    setValue("rice_type_id", trip.rice_type_id);
+    if (trip.rice_type_id) setValue("rice_type_id", trip.rice_type_id);
     setValue("input_weight_kg", trip.unloaded_weight_kg);
-  }, [editingItem, setValue, transportTrips, watchedTripId]);
+  }, [editingItem, setValue, trips, watchedTripId]);
 
   function startEdit(item: ProcessingRecordRow) {
     setEditingItem(item);
     reset({
-      transport_trip_id: item.transport_trip_id,
+      trip_id: item.trip_id ?? "",
       factory_id: item.factory_id,
       season_id: item.season_id ?? "",
       service_type: item.service_type,
@@ -213,7 +216,8 @@ export function ProcessingRecordsPage() {
     });
 
     const payload = {
-      transport_trip_id: values.transport_trip_id,
+      trip_id: values.trip_id,
+      transport_trip_id: null,
       factory_id: values.factory_id,
       season_id: values.season_id || null,
       service_type: values.service_type,
@@ -289,8 +293,8 @@ export function ProcessingRecordsPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Sấy xay xát</h1>
-          <p>Ghi nhận xử lý theo chuyến ghe, nhà máy, đầu vào, đầu ra và hao hụt.</p>
+          <h1>Xay xát</h1>
+          <p>Ghi nhận xay xát theo chuyến hàng, nhà máy, đầu vào, đầu ra và hao hụt.</p>
         </div>
         <div className="header-actions">
           <button
@@ -303,7 +307,7 @@ export function ProcessingRecordsPage() {
             }}
           >
             <Plus size={18} aria-hidden="true" />
-            Thêm phiếu xử lý
+            Thêm phiếu xay xát
           </button>
         </div>
       </header>
@@ -314,24 +318,19 @@ export function ProcessingRecordsPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <label className="field">
-            <span>Chuyến ghe</span>
-            <select {...register("transport_trip_id")}>
-              <option value="">Chọn chuyến ghe</option>
-              {transportTrips.map((trip) => (
+            <span>Chuyến hàng</span>
+            <select {...register("trip_id")}>
+              <option value="">Chọn chuyến hàng</option>
+              {trips.map((trip) => (
                 <option key={trip.id} value={trip.id}>
-                  {trip.code} - {formatDate(trip.trip_date)}
+                  {trip.code} - {trip.start_date ? formatDate(trip.start_date) : "-"}
                 </option>
               ))}
             </select>
-            {errors.transport_trip_id ? <small>{errors.transport_trip_id.message}</small> : null}
+            {errors.trip_id ? <small>{errors.trip_id.message}</small> : null}
           </label>
 
           <div className="field-grid">
@@ -349,13 +348,8 @@ export function ProcessingRecordsPage() {
             </label>
             <label className="field">
               <span>Dịch vụ</span>
-              <select {...register("service_type")}>
-                {serviceTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <input type="hidden" {...register("service_type")} value="milling" />
+              <input type="text" value="Xay xát" readOnly disabled />
             </label>
           </div>
 
@@ -444,7 +438,7 @@ export function ProcessingRecordsPage() {
 
           <button className="primary-button" type="submit" disabled={saving}>
             <Plus size={18} aria-hidden="true" />
-            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm phiếu xử lý"}
+            {saving ? "Đang lưu..." : editingItem ? "Lưu thay đổi" : "Thêm phiếu xay xát"}
           </button>
             </form>
           </ModalShell>
@@ -465,9 +459,9 @@ export function ProcessingRecordsPage() {
           {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
 
           {loading ? (
-            <div className="state-box">Đang tải phiếu xử lý...</div>
+            <div className="state-box">Đang tải phiếu xay xát...</div>
           ) : items.length === 0 ? (
-            <div className="state-box">Không có phiếu xử lý phù hợp.</div>
+            <div className="state-box">Không có phiếu xay xát phù hợp.</div>
           ) : (
             <>
             <div className="table-wrap">
@@ -569,7 +563,7 @@ function buildProcessingExportTable(item: ProcessingRecordRow) {
     title: "Processing record",
     headers: ["Field", "Value"],
     rows: [
-      ["Transport trip", item.trip?.code ?? "-"],
+      ["Chuyến hàng", item.trip?.code ?? "-"],
       ["Processed date", formatDate(item.processed_date)],
       ["Factory", item.factory?.name ?? "-"],
       ["Service type", formatServiceType(item.service_type)],

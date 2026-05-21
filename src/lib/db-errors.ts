@@ -5,6 +5,11 @@ type DbErrorLike = Pick<PostgrestError, "message" | "code"> | { message: string;
 const TABLE_LABELS: Record<string, string> = {
   authorization_letters: "giấy ủy quyền",
   authorization_letter_purchase_slips: "liên kết giấy ủy quyền – phiếu mua",
+  trips: "chuyến hàng",
+  trip_expenses: "chi phí chuyến hàng",
+  trip_sales: "bán gạo theo chuyến",
+  warehouses: "kho",
+  inventory_transactions: "giao dịch kho",
   purchase_slips: "phiếu mua",
   purchase_slip_attachments: "file đính kèm phiếu mua",
   transport_trips: "chuyến ghe",
@@ -25,6 +30,10 @@ const ENTITY_LABELS: Record<string, string> = {
   transporter_boats: "ghe vận chuyển",
   transport_routes: "tuyến vận chuyển",
   transport_trips: "chuyến ghe",
+  trips: "chuyến hàng",
+  warehouses: "kho",
+  inventory_transactions: "giao dịch kho",
+  trip_sales: "bán gạo theo chuyến",
   authorization_letters: "giấy ủy quyền",
   purchase_slips: "phiếu mua",
   processing_records: "phiếu sấy/xay",
@@ -62,6 +71,8 @@ const FK_CONSTRAINT_MESSAGES: Record<string, string> = {
     "Không thể xóa mùa vụ vì đang có phiếu sấy/xay. Hãy xóa hoặc đổi phiếu sấy/xay trước.",
   debts_season_id_fkey:
     "Không thể xóa mùa vụ vì đang có công nợ. Hãy xóa hoặc đổi công nợ trước.",
+  trips_season_id_fkey:
+    "Không thể xóa mùa vụ vì đang có chuyến hàng. Hãy xóa hoặc đổi chuyến hàng trước.",
 
   // rice_types
   transport_trips_rice_type_id_fkey:
@@ -72,6 +83,8 @@ const FK_CONSTRAINT_MESSAGES: Record<string, string> = {
     "Không thể xóa loại lúa vì đang có bảng giá gia công. Hãy xóa bảng giá trước.",
   processing_records_rice_type_id_fkey:
     "Không thể xóa loại lúa vì đang có phiếu sấy/xay. Hãy xóa hoặc đổi phiếu sấy/xay trước.",
+  trips_rice_type_id_fkey:
+    "Không thể xóa loại lúa vì đang có chuyến hàng. Hãy xóa hoặc đổi chuyến hàng trước.",
 
   // factories
   transport_trips_factory_id_fkey:
@@ -95,6 +108,18 @@ const FK_CONSTRAINT_MESSAGES: Record<string, string> = {
   processing_records_transport_trip_id_fkey:
     "Không thể xóa chuyến ghe vì đang có phiếu sấy/xay. Hãy xóa hoặc đổi phiếu sấy/xay trước.",
 
+  // trips
+  purchase_slips_trip_id_fkey:
+    "Chuyến hàng trên phiếu mua không hợp lệ. Vui lòng chọn lại chuyến hàng.",
+  trip_expenses_trip_id_fkey:
+    "Chuyến hàng trên chi phí không hợp lệ. Vui lòng chọn lại chuyến hàng.",
+  trip_sales_trip_id_fkey:
+    "Chuyến hàng trên bán gạo không hợp lệ. Vui lòng chọn lại chuyến hàng.",
+  inventory_transactions_trip_id_fkey:
+    "Chuyến hàng trên giao dịch kho không hợp lệ. Vui lòng chọn lại chuyến hàng.",
+  inventory_transactions_warehouse_id_fkey:
+    "Kho trên giao dịch kho không hợp lệ. Vui lòng chọn lại kho.",
+
   // authorization_letters
   purchase_slips_authorization_letter_id_fkey:
     "Không thể xóa giấy ủy quyền vì đang có phiếu mua. Hãy xóa hoặc đổi phiếu mua trước.",
@@ -115,6 +140,7 @@ const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   seasons_name_key: "Tên mùa vụ đã tồn tại. Vui lòng dùng tên khác.",
   rice_types_name_key: "Tên loại lúa đã tồn tại. Vui lòng dùng tên khác.",
   transport_trips_code_key: "Mã chuyến ghe đã tồn tại. Vui lòng dùng mã khác.",
+  trips_code_key: "Mã chuyến hàng đã tồn tại. Vui lòng dùng mã khác.",
   transport_route_stops_unique_order: "Thứ tự điểm dừng trùng trong cùng tuyến.",
 };
 

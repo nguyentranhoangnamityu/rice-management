@@ -15,6 +15,7 @@ export type Database = {
           farmer_id: string | null;
           authorization_letter_id: string | null;
           purchase_slip_id: string | null;
+          trip_id: string | null;
           transport_trip_id: string | null;
           processing_record_id: string | null;
           payment_id: string | null;
@@ -33,6 +34,7 @@ export type Database = {
           farmer_id?: string | null;
           authorization_letter_id?: string | null;
           purchase_slip_id?: string | null;
+          trip_id?: string | null;
           transport_trip_id?: string | null;
           processing_record_id?: string | null;
           payment_id?: string | null;
@@ -179,6 +181,7 @@ export type Database = {
           bank_name: string | null;
           bank_account_number: string | null;
           bank_account_name: string | null;
+          worker_allowance_per_kg: number;
           address: string | null;
           note: string | null;
           created_at: string;
@@ -193,6 +196,7 @@ export type Database = {
           bank_name?: string | null;
           bank_account_number?: string | null;
           bank_account_name?: string | null;
+          worker_allowance_per_kg?: number;
           address?: string | null;
           note?: string | null;
           created_at?: string;
@@ -308,7 +312,8 @@ export type Database = {
       processing_records: {
         Row: {
           id: string;
-          transport_trip_id: string;
+          trip_id: string | null;
+          transport_trip_id: string | null;
           factory_id: string;
           season_id: string | null;
           service_type: Database["public"]["Enums"]["processing_service_type"];
@@ -327,7 +332,8 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          transport_trip_id: string;
+          trip_id?: string | null;
+          transport_trip_id?: string | null;
           factory_id: string;
           season_id?: string | null;
           service_type: Database["public"]["Enums"]["processing_service_type"];
@@ -345,6 +351,34 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["processing_records"]["Insert"]>;
+        Relationships: [];
+      };
+      inventory_transactions: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          trip_id: string | null;
+          type: Database["public"]["Enums"]["inventory_transaction_type"];
+          item_type: Database["public"]["Enums"]["inventory_item_type"];
+          quantity_kg: number;
+          transaction_date: string;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          trip_id?: string | null;
+          type?: Database["public"]["Enums"]["inventory_transaction_type"];
+          item_type?: Database["public"]["Enums"]["inventory_item_type"];
+          quantity_kg: number;
+          transaction_date?: string;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["inventory_transactions"]["Insert"]>;
         Relationships: [];
       };
       purchase_slip_attachments: {
@@ -381,6 +415,7 @@ export type Database = {
           season_id: string;
           farmer_id: string;
           broker_id: string;
+          trip_id: string | null;
           transport_trip_id: string | null;
           rice_type_id: string;
           authorization_letter_id: string | null;
@@ -401,6 +436,7 @@ export type Database = {
           season_id: string;
           farmer_id: string;
           broker_id: string;
+          trip_id?: string | null;
           transport_trip_id?: string | null;
           rice_type_id: string;
           authorization_letter_id?: string | null;
@@ -486,6 +522,8 @@ export type Database = {
           id: string;
           name: string;
           note: string | null;
+          transport_price_basis: Database["public"]["Enums"]["transport_price_basis"];
+          transport_price: number;
           created_at: string;
           updated_at: string;
         };
@@ -493,10 +531,88 @@ export type Database = {
           id?: string;
           name: string;
           note?: string | null;
+          transport_price_basis?: Database["public"]["Enums"]["transport_price_basis"];
+          transport_price?: number;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["transport_routes"]["Insert"]>;
+        Relationships: [];
+      };
+      trip_expenses: {
+        Row: {
+          id: string;
+          trip_id: string;
+          type: Database["public"]["Enums"]["trip_expense_type"];
+          description: string | null;
+          amount: number;
+          expense_date: string | null;
+          payment_status: Database["public"]["Enums"]["payment_status"];
+          party_name: string | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          type: Database["public"]["Enums"]["trip_expense_type"];
+          description?: string | null;
+          amount: number;
+          expense_date?: string | null;
+          payment_status?: Database["public"]["Enums"]["payment_status"];
+          party_name?: string | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["trip_expenses"]["Insert"]>;
+        Relationships: [];
+      };
+      trips: {
+        Row: {
+          id: string;
+          code: string;
+          status: Database["public"]["Enums"]["trip_status"];
+          season_id: string | null;
+          rice_type_id: string | null;
+          legacy_transport_trip_id: string | null;
+          transporter_boat_id: string | null;
+          route_id: string | null;
+          factory_id: string | null;
+          start_date: string | null;
+          end_date: string | null;
+          loaded_weight_kg: number;
+          unloaded_weight_kg: number;
+          loss_weight_kg: number;
+          loss_percent: number;
+          estimated_revenue: number;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          status?: Database["public"]["Enums"]["trip_status"];
+          season_id?: string | null;
+          rice_type_id?: string | null;
+          legacy_transport_trip_id?: string | null;
+          transporter_boat_id?: string | null;
+          route_id?: string | null;
+          factory_id?: string | null;
+          start_date?: string | null;
+          end_date?: string | null;
+          loaded_weight_kg?: number;
+          unloaded_weight_kg?: number;
+          loss_weight_kg?: number;
+          loss_percent?: number;
+          estimated_revenue?: number;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["trips"]["Insert"]>;
         Relationships: [];
       };
       transport_trips: {
@@ -553,6 +669,36 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["transport_trips"]["Insert"]>;
         Relationships: [];
       };
+      trip_sales: {
+        Row: {
+          id: string;
+          trip_id: string;
+          sale_date: string;
+          buyer_name: string | null;
+          rice_weight_kg: number;
+          unit_price: number;
+          total_amount: number;
+          payment_status: Database["public"]["Enums"]["payment_status"];
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          sale_date?: string;
+          buyer_name?: string | null;
+          rice_weight_kg: number;
+          unit_price: number;
+          total_amount: number;
+          payment_status?: Database["public"]["Enums"]["payment_status"];
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["trip_sales"]["Insert"]>;
+        Relationships: [];
+      };
       transporter_boats: {
         Row: {
           id: string;
@@ -583,8 +729,47 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["transporter_boats"]["Insert"]>;
         Relationships: [];
       };
+      warehouses: {
+        Row: {
+          id: string;
+          name: string;
+          address: string | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          address?: string | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["warehouses"]["Insert"]>;
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      trip_summaries: {
+        Row: {
+          trip_id: string;
+          total_purchase_kg: number;
+          total_purchase_amount: number;
+          total_broker_commission: number;
+          total_expense_amount: number;
+          temporary_total_cost: number;
+          temporary_cost_per_kg: number | null;
+          total_sale_kg: number;
+          total_revenue: number;
+          estimated_revenue: number;
+          temporary_profit: number;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
     Enums: {
       authorization_letter_status: "draft" | "active" | "expired" | "cancelled";
@@ -599,6 +784,8 @@ export type Database = {
         | "other";
       debt_party_type: "broker" | "transporter_boat" | "factory";
       debt_source_type: "purchase_slip" | "transport_trip" | "processing_record";
+      inventory_item_type: "paddy" | "rice" | "byproduct";
+      inventory_transaction_type: "in" | "out" | "adjustment";
       debt_type: "broker_commission" | "transport" | "processing";
       factory_type: "drying" | "milling" | "drying_milling";
       payment_method: "bank_transfer" | "cash";
@@ -606,6 +793,29 @@ export type Database = {
       payment_type: "farmer_payment" | "debt_payment";
       processing_service_type: "drying" | "milling";
       transport_price_basis: "loaded_weight" | "unloaded_weight" | "fixed";
+      trip_expense_type:
+        | "loi_cost"
+        | "rice_carrying_labor"
+        | "boat_cost"
+        | "boat_unloading"
+        | "worker_allowance"
+        | "drying_cost"
+        | "milling_cost"
+        | "warehouse_loading"
+        | "transport_cost"
+        | "fuel_fee"
+        | "weighing_fee"
+        | "other";
+      trip_status:
+        | "draft"
+        | "purchasing"
+        | "loaded_to_boat"
+        | "drying"
+        | "milling"
+        | "ready_to_sell"
+        | "selling"
+        | "completed"
+        | "cancelled";
     };
     CompositeTypes: Record<string, never>;
   };

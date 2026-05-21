@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, FileDown, Plus, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Edit2, FileDown, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ModalShell } from "../../components/ui/ModalShell";
@@ -10,6 +10,11 @@ import { exportExcel, exportPdf } from "../../lib/export";
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
+import {
+  calculateTransportCost,
+  calculateTransportLoss,
+  transportPriceBasisOptions,
+} from "../../lib/transport-cost";
 
 type TransportTrip = Tables<"transport_trips">;
 type TransporterBoat = Tables<"transporter_boats">;
@@ -22,8 +27,6 @@ type PurchaseSlip = Tables<"purchase_slips">;
 type Farmer = Tables<"farmers">;
 type Broker = Tables<"brokers">;
 type PaymentStatus = Enums<"payment_status">;
-type TransportPriceBasis = Enums<"transport_price_basis">;
-
 type RouteWithStops = TransportRoute & {
   stops: TransportRouteStop[];
 };
@@ -42,11 +45,7 @@ type PurchaseSlipAssignment = PurchaseSlip & {
   riceType?: RiceType | null;
 };
 
-const priceBasisOptions: { value: TransportPriceBasis; label: string }[] = [
-  { value: "loaded_weight", label: "Theo kg lên ghe" },
-  { value: "unloaded_weight", label: "Theo kg xuống ghe" },
-  { value: "fixed", label: "Giá cố định" },
-];
+const priceBasisOptions = transportPriceBasisOptions;
 
 const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
   { value: "unpaid", label: "Chưa trả" },
@@ -62,8 +61,8 @@ const tripSchema = z.object({
   season_id: z.string().min(1, "Vui lòng chọn mùa vụ"),
   rice_type_id: z.string().min(1, "Vui lòng chọn loại lúa"),
   trip_date: z.string().min(1, "Vui lòng chọn ngày chuyến"),
-  loaded_weight_kg: z.number().min(0, "Kg lên ghe không được âm"),
-  unloaded_weight_kg: z.number().min(0, "Kg xuống ghe không được âm"),
+  loaded_weight_kg: z.number().min(0, "Kg lúa xuống ghe không được âm"),
+  unloaded_weight_kg: z.number().min(0, "Kg lúa lên nhà máy không được âm"),
   transport_price_basis: z.enum(["loaded_weight", "unloaded_weight", "fixed"]),
   transport_price: z.number().min(0, "Giá vận chuyển không được âm"),
   fuel_fee: z.number().min(0, "Tiền dầu không được âm"),
@@ -125,12 +124,14 @@ export function TransportTripsPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<TripFormValues>({
     resolver: zodResolver(tripSchema),
     defaultValues: emptyValues,
   });
 
+  const watchedRouteId = watch("route_id");
   const watchedLoadedWeight = watch("loaded_weight_kg");
   const watchedUnloadedWeight = watch("unloaded_weight_kg");
   const watchedPriceBasis = watch("transport_price_basis");
@@ -138,16 +139,31 @@ export function TransportTripsPage() {
   const watchedFuelFee = watch("fuel_fee");
   const watchedLaborFee = watch("labor_fee");
   const watchedWeighingFee = watch("weighing_fee");
+  const previousRouteIdRef = useRef<string | null>(null);
 
-  const calculated = calculateTrip({
-    loadedWeight: watchedLoadedWeight,
-    unloadedWeight: watchedUnloadedWeight,
-    priceBasis: watchedPriceBasis,
-    transportPrice: watchedTransportPrice,
-    fuelFee: watchedFuelFee,
-    laborFee: watchedLaborFee,
-    weighingFee: watchedWeighingFee,
-  });
+  const calculated = useMemo(() => {
+    const loss = calculateTransportLoss(watchedLoadedWeight || 0, watchedUnloadedWeight || 0);
+    const transportCost = calculateTransportCost({
+      loadedWeightKg: watchedLoadedWeight || 0,
+      unloadedWeightKg: watchedUnloadedWeight || 0,
+      priceBasis: watchedPriceBasis,
+      transportPrice: watchedTransportPrice || 0,
+    });
+    return {
+      lossWeight: loss.lossWeight,
+      lossPercent: loss.lossPercent,
+      transportCost,
+      totalCost: round2(transportCost + (watchedFuelFee || 0) + (watchedLaborFee || 0) + (watchedWeighingFee || 0)),
+    };
+  }, [
+    watchedLoadedWeight,
+    watchedUnloadedWeight,
+    watchedPriceBasis,
+    watchedTransportPrice,
+    watchedFuelFee,
+    watchedLaborFee,
+    watchedWeighingFee,
+  ]);
 
   const boatMap = useMemo(() => new Map(boats.map((boat) => [boat.id, boat])), [boats]);
   const routeMap = useMemo(() => new Map(routes.map((route) => [route.id, route])), [routes]);
@@ -278,8 +294,22 @@ export function TransportTripsPage() {
     void loadReferenceData();
   }, []);
 
+  useEffect(() => {
+    if (!formOpen || !watchedRouteId) return;
+    if (previousRouteIdRef.current === watchedRouteId) return;
+
+    const route = routeMap.get(watchedRouteId);
+    previousRouteIdRef.current = watchedRouteId;
+
+    if (!route || route.transport_price <= 0) return;
+
+    setValue("transport_price_basis", route.transport_price_basis);
+    setValue("transport_price", route.transport_price);
+  }, [formOpen, watchedRouteId, routeMap, setValue]);
+
   function startEdit(item: TripRow) {
     setEditingItem(item);
+    previousRouteIdRef.current = item.route_id;
     reset({
       code: item.code,
       transporter_boat_id: item.transporter_boat_id,
@@ -303,6 +333,7 @@ export function TransportTripsPage() {
 
   function clearForm() {
     setEditingItem(null);
+    previousRouteIdRef.current = null;
     reset(emptyValues);
     setFormOpen(false);
   }
@@ -311,15 +342,19 @@ export function TransportTripsPage() {
     setSaving(true);
     setError(null);
 
-    const nextCalculated = calculateTrip({
-      loadedWeight: values.loaded_weight_kg,
-      unloadedWeight: values.unloaded_weight_kg,
+    const loss = calculateTransportLoss(values.loaded_weight_kg, values.unloaded_weight_kg);
+    const transportCost = calculateTransportCost({
+      loadedWeightKg: values.loaded_weight_kg,
+      unloadedWeightKg: values.unloaded_weight_kg,
       priceBasis: values.transport_price_basis,
       transportPrice: values.transport_price,
-      fuelFee: values.fuel_fee,
-      laborFee: values.labor_fee,
-      weighingFee: values.weighing_fee,
     });
+    const nextCalculated = {
+      lossWeight: loss.lossWeight,
+      lossPercent: loss.lossPercent,
+      transportCost,
+      totalCost: round2(transportCost + values.fuel_fee + values.labor_fee + values.weighing_fee),
+    };
 
     const payload = {
       code: values.code,
@@ -450,11 +485,6 @@ export function TransportTripsPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <label className="field">
@@ -537,7 +567,7 @@ export function TransportTripsPage() {
 
           <div className="field-grid">
             <label className="field">
-              <span>Kg lên ghe</span>
+              <span>Kg lúa xuống ghe</span>
               <input
                 type="number"
                 min="0"
@@ -547,7 +577,7 @@ export function TransportTripsPage() {
               {errors.loaded_weight_kg ? <small>{errors.loaded_weight_kg.message}</small> : null}
             </label>
             <label className="field">
-              <span>Kg xuống ghe</span>
+              <span>Kg lúa lên nhà máy</span>
               <input
                 type="number"
                 min="0"
@@ -646,7 +676,7 @@ export function TransportTripsPage() {
                 <strong>{formatNumber(assignedPurchaseWeight)} kg</strong>
               </div>
               <div className="metric-card">
-                <span>Kg lên ghe</span>
+                <span>Kg lúa xuống ghe</span>
                 <strong>{formatNumber(watchedLoadedWeight)} kg</strong>
               </div>
               <div className="metric-card">
@@ -657,7 +687,7 @@ export function TransportTripsPage() {
 
             {assignedWeightDifference !== 0 ? (
               <div className="alert warning-alert">
-                Khối lượng phiếu mua đã gán đang lệch với kg lên ghe. Bạn vẫn có thể lưu chuyến.
+                Khối lượng phiếu mua đã gán đang lệch với kg lúa xuống ghe. Bạn vẫn có thể lưu chuyến.
               </div>
             ) : null}
 
@@ -809,41 +839,6 @@ export function TransportTripsPage() {
   );
 }
 
-function calculateTrip({
-  loadedWeight,
-  unloadedWeight,
-  priceBasis,
-  transportPrice,
-  fuelFee,
-  laborFee,
-  weighingFee,
-}: {
-  loadedWeight: number;
-  unloadedWeight: number;
-  priceBasis: TransportPriceBasis;
-  transportPrice: number;
-  fuelFee: number;
-  laborFee: number;
-  weighingFee: number;
-}) {
-  const lossWeight = Math.max(loadedWeight - unloadedWeight, 0);
-  const lossPercent = loadedWeight > 0 ? (lossWeight / loadedWeight) * 100 : 0;
-  const transportCost =
-    priceBasis === "loaded_weight"
-      ? loadedWeight * transportPrice
-      : priceBasis === "unloaded_weight"
-        ? unloadedWeight * transportPrice
-        : transportPrice;
-  const totalCost = transportCost + fuelFee + laborFee + weighingFee;
-
-  return {
-    lossWeight: round2(lossWeight),
-    lossPercent: round4(lossPercent),
-    transportCost: round2(transportCost),
-    totalCost: round2(totalCost),
-  };
-}
-
 function buildTripExportTable(item: TripRow) {
   return {
     title: "Transport trip",
@@ -869,10 +864,6 @@ function buildTripExportTable(item: TripRow) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-function round4(value: number) {
-  return Math.round(value * 10000) / 10000;
 }
 
 function formatRoutePath(stops: TransportRouteStop[]) {
@@ -910,4 +901,3 @@ function formatMoney(value: number) {
     maximumFractionDigits: 0,
   }).format(value);
 }
-

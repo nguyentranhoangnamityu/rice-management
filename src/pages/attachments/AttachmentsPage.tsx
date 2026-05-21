@@ -20,13 +20,13 @@ type Farmer = Tables<"farmers">;
 type Payment = Tables<"payments">;
 type ProcessingRecord = Tables<"processing_records">;
 type PurchaseSlip = Tables<"purchase_slips">;
-type TransportTrip = Tables<"transport_trips">;
+type Trip = Tables<"trips">;
 
 type ParentType =
   | "farmer"
   | "authorization_letter"
   | "purchase_slip"
-  | "transport_trip"
+  | "trip"
   | "processing_record"
   | "payment"
   | "debt";
@@ -51,7 +51,7 @@ const parentTypeOptions: { value: ParentType; label: string }[] = [
   { value: "farmer", label: "Nông dân" },
   { value: "authorization_letter", label: "Giấy ủy quyền" },
   { value: "purchase_slip", label: "Phiếu mua" },
-  { value: "transport_trip", label: "Chuyến ghe" },
+  { value: "trip", label: "Chuyến hàng" },
   { value: "processing_record", label: "Phiếu xử lý" },
   { value: "payment", label: "Thanh toán" },
   { value: "debt", label: "Công nợ" },
@@ -61,7 +61,7 @@ const parentColumnByType: Record<ParentType, keyof Attachment> = {
   farmer: "farmer_id",
   authorization_letter: "authorization_letter_id",
   purchase_slip: "purchase_slip_id",
-  transport_trip: "transport_trip_id",
+  trip: "trip_id",
   processing_record: "processing_record_id",
   payment: "payment_id",
   debt: "debt_id",
@@ -72,7 +72,7 @@ const formSchema = z.object({
     "farmer",
     "authorization_letter",
     "purchase_slip",
-    "transport_trip",
+    "trip",
     "processing_record",
     "payment",
     "debt",
@@ -115,7 +115,7 @@ export function AttachmentsPage() {
     farmer: [],
     authorization_letter: [],
     purchase_slip: [],
-    transport_trip: [],
+    trip: [],
     processing_record: [],
     payment: [],
     debt: [],
@@ -168,7 +168,7 @@ export function AttachmentsPage() {
       supabase.from("farmers").select("*").order("name", { ascending: true }),
       supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
       supabase.from("purchase_slips").select("*").order("purchase_date", { ascending: false }),
-      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
+      supabase.from("trips").select("*").order("start_date", { ascending: false }),
       supabase.from("processing_records").select("*").order("processed_date", { ascending: false }),
       supabase.from("payments").select("*").order("paid_date", { ascending: false }),
       supabase.from("debts").select("*").order("created_at", { ascending: false }),
@@ -202,9 +202,9 @@ export function AttachmentsPage() {
         id: slip.id,
         label: `Phiếu mua ${formatDate(slip.purchase_date)} - ${formatNumber(slip.weight_kg)} kg`,
       })),
-      transport_trip: (tripsResult.data ?? []).map((trip: TransportTrip) => ({
+      trip: (tripsResult.data ?? []).map((trip: Trip) => ({
         id: trip.id,
-        label: `${trip.code} - ${formatDate(trip.trip_date)}`,
+        label: `${trip.code} - ${trip.start_date ? formatDate(trip.start_date) : "-"}`,
       })),
       processing_record: (recordsResult.data ?? []).map((record: ProcessingRecord) => ({
         id: record.id,
@@ -245,7 +245,7 @@ export function AttachmentsPage() {
     setSaving(true);
     setError(null);
 
-    const safeName = selectedFile.name.replace(/[^\w.\-]+/g, "_");
+    const safeName = selectedFile.name.replace(/[^\w.-]+/g, "_");
     const filePath = `${values.parent_type}/${values.parent_id}/${crypto.randomUUID()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -265,6 +265,7 @@ export function AttachmentsPage() {
       farmer_id: null,
       authorization_letter_id: null,
       purchase_slip_id: null,
+      trip_id: null,
       transport_trip_id: null,
       processing_record_id: null,
       payment_id: null,
@@ -555,7 +556,7 @@ function setAttachmentParentId(
   if (parentType === "farmer") metadata.farmer_id = parentId;
   if (parentType === "authorization_letter") metadata.authorization_letter_id = parentId;
   if (parentType === "purchase_slip") metadata.purchase_slip_id = parentId;
-  if (parentType === "transport_trip") metadata.transport_trip_id = parentId;
+  if (parentType === "trip") metadata.trip_id = parentId;
   if (parentType === "processing_record") metadata.processing_record_id = parentId;
   if (parentType === "payment") metadata.payment_id = parentId;
   if (parentType === "debt") metadata.debt_id = parentId;

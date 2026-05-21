@@ -9,7 +9,9 @@ type UseServerPaginationOptions = {
 };
 
 export function useServerPagination<T>(table: ListTableKey, options: UseServerPaginationOptions = {}) {
-  const { queryOptions } = options;
+  const applyFilter = options.queryOptions?.applyFilter;
+  const applySearch = options.queryOptions?.applySearch;
+  const resolveSearchFilter = options.queryOptions?.resolveSearchFilter;
   const [items, setItems] = useState<T[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -31,11 +33,13 @@ export function useServerPagination<T>(table: ListTableKey, options: UseServerPa
   const loadPage = useCallback(
     async (targetPage: number): Promise<PaginatedResult<T>> => {
       return fetchPaginatedList<T>(table, targetPage, {
-        ...queryOptions,
+        applyFilter,
+        applySearch,
+        resolveSearchFilter,
         search: debouncedSearch,
       });
     },
-    [table, debouncedSearch, queryOptions],
+    [table, debouncedSearch, applyFilter, applySearch, resolveSearchFilter],
   );
 
   const refresh = useCallback(

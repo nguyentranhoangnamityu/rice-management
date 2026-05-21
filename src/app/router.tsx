@@ -12,13 +12,17 @@ import { ExportsPage } from "../pages/exports/ExportsPage";
 import { FactoriesPage } from "../pages/factories/FactoriesPage";
 import { FarmersPage } from "../pages/farmers/FarmersPage";
 import { LoginPage } from "../pages/login/LoginPage";
+import { DryingPage } from "../pages/drying/DryingPage";
 import { ProcessingRecordsPage } from "../pages/processing-records/ProcessingRecordsPage";
 import { PurchaseSlipsPage } from "../pages/purchase-slips/PurchaseSlipsPage";
 import { RiceTypesPage } from "../pages/rice-types/RiceTypesPage";
 import { SeasonsPage } from "../pages/seasons/SeasonsPage";
+import { TransporterBoatDetailPage } from "../pages/transporter-boats/TransporterBoatDetailPage";
 import { TransporterBoatsPage } from "../pages/transporter-boats/TransporterBoatsPage";
 import { TransportRoutesPage } from "../pages/transport-routes/TransportRoutesPage";
-import { TransportTripsPage } from "../pages/transport-trips/TransportTripsPage";
+import { TripsPage } from "../pages/trips/TripsPage";
+import { TripDetailPage } from "../pages/trips/TripDetailPage";
+import { WarehousesPage } from "../pages/warehouses/WarehousesPage";
 
 export function AppRouter() {
   return (
@@ -33,12 +37,16 @@ export function AppRouter() {
           <Route path="seasons" element={<SeasonsPage />} />
           <Route path="farmers" element={<FarmersPage />} />
           <Route path="brokers" element={<BrokersPage />} />
+          <Route path="trips" element={<TripsPage />} />
+          <Route path="trips/:id" element={<TripDetailPage />} />
+          <Route path="warehouses" element={<WarehousesPage />} />
           <Route path="purchase-slips" element={<PurchaseSlipsPage />} />
           <Route path="authorization-letters" element={<AuthorizationLettersPage />} />
           <Route path="transporter-boats" element={<TransporterBoatsPage />} />
-          <Route path="transport-trips" element={<TransportTripsPage />} />
+          <Route path="transporter-boats/:id" element={<TransporterBoatDetailPage />} />
           <Route path="transport-routes" element={<TransportRoutesPage />} />
           <Route path="factories" element={<FactoriesPage />} />
+          <Route path="drying" element={<DryingPage />} />
           <Route path="processing-records" element={<ProcessingRecordsPage />} />
           <Route path="debts" element={<DebtsPage />} />
           <Route path="attachments" element={<AttachmentsPage />} />
@@ -49,3 +57,4 @@ export function AppRouter() {
     </Routes>
   );
 }
+

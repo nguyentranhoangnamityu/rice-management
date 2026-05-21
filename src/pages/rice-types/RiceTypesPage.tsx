@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -149,11 +149,6 @@ export function RiceTypesPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <label className="field">

@@ -20,7 +20,7 @@ type PurchaseSlip = Tables<"purchase_slips">;
 type Season = Tables<"seasons">;
 type Farmer = Tables<"farmers">;
 type Broker = Tables<"brokers">;
-type TransportTrip = Tables<"transport_trips">;
+type Trip = Tables<"trips">;
 type RiceType = Tables<"rice_types">;
 type AuthorizationLetter = Tables<"authorization_letters">;
 type PaymentStatus = Enums<"payment_status">;
@@ -29,7 +29,7 @@ type SlipRow = PurchaseSlip & {
   season?: Season | null;
   farmer?: Farmer | null;
   broker?: Broker | null;
-  transportTrip?: TransportTrip | null;
+  trip?: Trip | null;
   riceType?: RiceType | null;
   authorizationLetter?: AuthorizationLetter | null;
   authorizedReceiverBroker?: Broker | null;
@@ -45,7 +45,7 @@ const slipSchema = z.object({
   season_id: z.string().min(1, "Vui lòng chọn mùa vụ"),
   farmer_id: z.string().min(1, "Vui lòng chọn nông dân"),
   broker_id: z.string().min(1, "Vui lòng chọn cò lúa"),
-  transport_trip_id: z.string().optional(),
+  trip_id: z.string().optional(),
   rice_type_id: z.string().min(1, "Vui lòng chọn loại lúa"),
   authorization_letter_id: z.string().optional(),
   authorized_receiver_broker_id: z.string().optional(),
@@ -63,7 +63,7 @@ const emptyValues: SlipFormValues = {
   season_id: "",
   farmer_id: "",
   broker_id: "",
-  transport_trip_id: "",
+  trip_id: "",
   rice_type_id: "",
   authorization_letter_id: "",
   authorized_receiver_broker_id: "",
@@ -124,7 +124,7 @@ export function PurchaseSlipsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
   const [authorizationLetters, setAuthorizationLetters] = useState<AuthorizationLetter[]>([]);
   const [referenceLoading, setReferenceLoading] = useState(true);
@@ -155,7 +155,7 @@ export function PurchaseSlipsPage() {
   const selectedSeasonId = watch("season_id");
   const selectedFarmerId = watch("farmer_id");
   const selectedBrokerId = watch("broker_id");
-  const selectedTransportTripId = watch("transport_trip_id");
+  const selectedTripId = watch("trip_id");
   const selectedRiceTypeId = watch("rice_type_id");
   const selectedAuthorizationLetterId = watch("authorization_letter_id");
   const selectedAuthorizedReceiverBrokerId = watch("authorized_receiver_broker_id");
@@ -178,13 +178,13 @@ export function PurchaseSlipsPage() {
     () => brokers.map((broker) => ({ value: broker.id, label: broker.name })),
     [brokers],
   );
-  const transportTripOptions = useMemo(
+  const tripOptions = useMemo(
     () =>
-      transportTrips.map((trip) => ({
+      trips.map((trip) => ({
         value: trip.id,
-        label: `${trip.code} - ${formatDate(trip.trip_date)}`,
+        label: `${trip.code} - ${formatTripStatus(trip.status)}`,
       })),
-    [transportTrips],
+    [trips],
   );
   const riceTypeOptions = useMemo(
     () => riceTypes.map((riceType) => ({ value: riceType.id, label: riceType.name })),
@@ -230,10 +230,7 @@ export function PurchaseSlipsPage() {
   const seasonMap = useMemo(() => new Map(seasons.map((season) => [season.id, season])), [seasons]);
   const farmerMap = useMemo(() => new Map(farmers.map((farmer) => [farmer.id, farmer])), [farmers]);
   const brokerMap = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker])), [brokers]);
-  const transportTripMap = useMemo(
-    () => new Map(transportTrips.map((trip) => [trip.id, trip])),
-    [transportTrips],
-  );
+  const tripMap = useMemo(() => new Map(trips.map((trip) => [trip.id, trip])), [trips]);
   const riceTypeMap = useMemo(
     () => new Map(riceTypes.map((riceType) => [riceType.id, riceType])),
     [riceTypes],
@@ -250,7 +247,7 @@ export function PurchaseSlipsPage() {
         season: seasonMap.get(slip.season_id) ?? null,
         farmer: farmerMap.get(slip.farmer_id) ?? null,
         broker: brokerMap.get(slip.broker_id) ?? null,
-        transportTrip: slip.transport_trip_id ? transportTripMap.get(slip.transport_trip_id) ?? null : null,
+        trip: slip.trip_id ? tripMap.get(slip.trip_id) ?? null : null,
         riceType: riceTypeMap.get(slip.rice_type_id) ?? null,
         authorizationLetter: slip.authorization_letter_id
           ? authorizationLetterMap.get(slip.authorization_letter_id) ?? null
@@ -264,7 +261,7 @@ export function PurchaseSlipsPage() {
       seasonMap,
       farmerMap,
       brokerMap,
-      transportTripMap,
+      tripMap,
       riceTypeMap,
       authorizationLetterMap,
     ],
@@ -279,14 +276,14 @@ export function PurchaseSlipsPage() {
       seasonsResult,
       farmersResult,
       brokersResult,
-      transportTripsResult,
+      tripsResult,
       riceTypesResult,
       authorizationLettersResult,
     ] = await Promise.all([
       supabase.from("seasons").select("*").order("from_date", { ascending: false }),
       supabase.from("farmers").select("*").order("name", { ascending: true }),
       supabase.from("brokers").select("*").order("name", { ascending: true }),
-      supabase.from("transport_trips").select("*").order("trip_date", { ascending: false }),
+      supabase.from("trips").select("*").order("start_date", { ascending: false }),
       supabase.from("rice_types").select("*").order("name", { ascending: true }),
       supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
     ]);
@@ -295,7 +292,7 @@ export function PurchaseSlipsPage() {
       seasonsResult.error ??
       farmersResult.error ??
       brokersResult.error ??
-      transportTripsResult.error ??
+      tripsResult.error ??
       riceTypesResult.error ??
       authorizationLettersResult.error;
 
@@ -305,7 +302,7 @@ export function PurchaseSlipsPage() {
       setSeasons(seasonsResult.data ?? []);
       setFarmers(farmersResult.data ?? []);
       setBrokers(brokersResult.data ?? []);
-      setTransportTrips(transportTripsResult.data ?? []);
+      setTrips(tripsResult.data ?? []);
       setRiceTypes(riceTypesResult.data ?? []);
       setAuthorizationLetters(authorizationLettersResult.data ?? []);
     }
@@ -347,7 +344,7 @@ export function PurchaseSlipsPage() {
       season_id: item.season_id,
       farmer_id: item.farmer_id,
       broker_id: item.broker_id,
-      transport_trip_id: item.transport_trip_id ?? "",
+      trip_id: item.trip_id ?? "",
       rice_type_id: item.rice_type_id,
       authorization_letter_id: item.authorization_letter_id ?? "",
       authorized_receiver_broker_id: item.authorized_receiver_broker_id ?? "",
@@ -384,7 +381,7 @@ export function PurchaseSlipsPage() {
       season_id: values.season_id,
       farmer_id: values.farmer_id,
       broker_id: values.broker_id,
-      transport_trip_id: values.transport_trip_id || null,
+      trip_id: values.trip_id || null,
       rice_type_id: values.rice_type_id,
       authorization_letter_id: values.authorization_letter_id || null,
       authorized_receiver_broker_id: values.authorized_receiver_broker_id || null,
@@ -496,7 +493,7 @@ export function PurchaseSlipsPage() {
       <header className="page-header">
         <div>
           <h1>Phiếu mua</h1>
-          <p>Ghi nhận từng lần mua lúa theo nông dân, cò lúa, mùa vụ và chuyến ghe nếu có.</p>
+          <p>Ghi nhận từng lần mua lúa theo nông dân, cò lúa, mùa vụ và chuyến hàng nếu có.</p>
         </div>
         <div className="header-actions">
           <button
@@ -520,11 +517,6 @@ export function PurchaseSlipsPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           {prefillFarmerName && !editingItem ? (
@@ -594,14 +586,12 @@ export function PurchaseSlipsPage() {
               {errors.rice_type_id ? <small>{errors.rice_type_id.message}</small> : null}
             </label>
             <label className="field">
-              <span>Chuyến ghe</span>
+              <span>Chuyến hàng</span>
               <SearchableSelect
-                value={selectedTransportTripId}
-                onChange={(value) =>
-                  setValue("transport_trip_id", value, { shouldDirty: true, shouldValidate: true })
-                }
-                options={transportTripOptions}
-                placeholder="Tìm chuyến ghe"
+                value={selectedTripId}
+                onChange={(value) => setValue("trip_id", value, { shouldDirty: true, shouldValidate: true })}
+                options={tripOptions}
+                placeholder="Tìm chuyến hàng"
                 emptyLabel="Không chọn"
               />
             </label>
@@ -696,7 +686,7 @@ export function PurchaseSlipsPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm theo nông dân, cò, chuyến ghe, loại lúa"
+                placeholder="Tìm theo nông dân, cò, chuyến hàng, loại lúa"
               />
             </label>
           </div>
@@ -716,7 +706,7 @@ export function PurchaseSlipsPage() {
                     <th>Ngày</th>
                     <th>Nông dân</th>
                     <th>Cò lúa</th>
-                    <th>Chuyến ghe</th>
+                    <th>Chuyến hàng</th>
                     <th>Loại lúa</th>
                     <th>Kg</th>
                     <th>Thành tiền</th>
@@ -736,7 +726,7 @@ export function PurchaseSlipsPage() {
                           <span className="muted-text">Nhận UQ: {item.authorizedReceiverBroker.name}</span>
                         ) : null}
                       </td>
-                      <td>{item.transportTrip?.code || "-"}</td>
+                      <td>{item.trip?.code || "-"}</td>
                       <td>{item.riceType?.name || "-"}</td>
                       <td>{formatNumber(item.weight_kg)}</td>
                       <td>{formatMoney(item.total_amount)}</td>
@@ -1018,6 +1008,21 @@ function getPaymentStatusClass(value: PaymentStatus) {
   return "unpaid";
 }
 
+function formatTripStatus(value: Trip["status"]) {
+  const labels: Record<Trip["status"], string> = {
+    draft: "Nháp",
+    purchasing: "Đang mua",
+    loaded_to_boat: "Đã xuống ghe",
+    drying: "Đang sấy",
+    milling: "Đang xay xát",
+    ready_to_sell: "Sẵn sàng bán",
+    selling: "Đang bán",
+    completed: "Hoàn tất",
+    cancelled: "Đã hủy",
+  };
+  return labels[value] ?? value;
+}
+
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
@@ -1092,7 +1097,8 @@ function buildContractTemplateData(item: SlipRow) {
     year: purchaseDateParts.year,
     broker_name: toText(item.broker?.name),
     note: toTextOrFillLine(item.note),
-    transport_trip_code: toText(item.transportTrip?.code),
+    trip_code: toText(item.trip?.code),
+    transport_trip_code: toText(item.trip?.code),
   };
 }
 

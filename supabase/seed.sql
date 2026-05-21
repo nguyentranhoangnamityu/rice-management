@@ -171,12 +171,20 @@ on conflict (id) do update set
   bank_account_name = excluded.bank_account_name,
   note = excluded.note;
 
-insert into transport_routes (id, name, note)
+insert into transport_routes (id, name, note, transport_price_basis, transport_price)
 values
-  ('00000000-0000-4000-8000-000000000701', 'Field A to Co May', 'Seed multi-stop route')
+  (
+    '00000000-0000-4000-8000-000000000701',
+    'Field A to Co May',
+    'Seed multi-stop route',
+    'unloaded_weight',
+    120
+  )
 on conflict (id) do update set
   name = excluded.name,
-  note = excluded.note;
+  note = excluded.note,
+  transport_price_basis = excluded.transport_price_basis,
+  transport_price = excluded.transport_price;
 
 insert into transport_route_stops (id, route_id, stop_order, location_name, note)
 values
@@ -256,14 +264,14 @@ values
     'unloaded_weight',
     120,
     2078400,
-    500000,
+    0,
     300000,
     100000,
-    2978400,
+    2478400,
     'unpaid',
     'Seed transport trip'
   )
-on conflict (id) do update set
+on conflict (code) do update set
   code = excluded.code,
   transporter_boat_id = excluded.transporter_boat_id,
   route_id = excluded.route_id,
@@ -285,11 +293,124 @@ on conflict (id) do update set
   payment_status = excluded.payment_status,
   note = excluded.note;
 
+insert into trips (
+  id,
+  code,
+  status,
+  season_id,
+  rice_type_id,
+  start_date,
+  legacy_transport_trip_id,
+  transporter_boat_id,
+  route_id,
+  factory_id,
+  loaded_weight_kg,
+  unloaded_weight_kg,
+  loss_weight_kg,
+  loss_percent,
+  estimated_revenue,
+  note
+)
+values
+  (
+    '00000000-0000-4000-8000-000000002001',
+    'TT-2026-001',
+    'loaded_to_boat',
+    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000201',
+    '2026-02-08',
+    '00000000-0000-4000-8000-000000001001',
+    '00000000-0000-4000-8000-000000000601',
+    '00000000-0000-4000-8000-000000000701',
+    '00000000-0000-4000-8000-000000000501',
+    17500,
+    17320,
+    180,
+    1.0286,
+    0,
+    'Seed trip migrated from transport trip'
+  )
+on conflict (code) do update set
+  code = excluded.code,
+  status = excluded.status,
+  season_id = excluded.season_id,
+  rice_type_id = excluded.rice_type_id,
+  start_date = excluded.start_date,
+  legacy_transport_trip_id = excluded.legacy_transport_trip_id,
+  transporter_boat_id = excluded.transporter_boat_id,
+  route_id = excluded.route_id,
+  factory_id = excluded.factory_id,
+  loaded_weight_kg = excluded.loaded_weight_kg,
+  unloaded_weight_kg = excluded.unloaded_weight_kg,
+  loss_weight_kg = excluded.loss_weight_kg,
+  loss_percent = excluded.loss_percent,
+  estimated_revenue = excluded.estimated_revenue,
+  note = excluded.note;
+
+delete from trip_expenses
+where id = '00000000-0000-4000-8000-000000002102';
+
+insert into trip_expenses (
+  id,
+  trip_id,
+  type,
+  description,
+  amount,
+  expense_date,
+  payment_status,
+  party_name,
+  note
+)
+values
+  (
+    '00000000-0000-4000-8000-000000002101',
+    (select id from trips where code = 'TT-2026-001'),
+    'transport_cost',
+    'Seed tiền vận chuyển',
+    2078400,
+    '2026-02-08',
+    'unpaid',
+    'Ghe Sông Hậu',
+    'Seed transport expense'
+  ),
+  (
+    '00000000-0000-4000-8000-000000002103',
+    (select id from trips where code = 'TT-2026-001'),
+    'rice_carrying_labor',
+    'Seed tiền công',
+    300000,
+    '2026-02-08',
+    'unpaid',
+    'Ghe Sông Hậu',
+    'Seed labor expense'
+  ),
+  (
+    '00000000-0000-4000-8000-000000002104',
+    (select id from trips where code = 'TT-2026-001'),
+    'weighing_fee',
+    'Seed tiền cân',
+    100000,
+    '2026-02-08',
+    'unpaid',
+    'Ghe Sông Hậu',
+    'Seed weighing expense'
+  )
+on conflict (id) do update set
+  trip_id = excluded.trip_id,
+  type = excluded.type,
+  description = excluded.description,
+  amount = excluded.amount,
+  expense_date = excluded.expense_date,
+  payment_status = excluded.payment_status,
+  party_name = excluded.party_name,
+  note = excluded.note;
+
 insert into purchase_slips (
   id,
   season_id,
   farmer_id,
   broker_id,
+  trip_id,
   transport_trip_id,
   rice_type_id,
   authorization_letter_id,
@@ -308,6 +429,7 @@ values
     '00000000-0000-4000-8000-000000000101',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
+    (select id from trips where code = 'TT-2026-001'),
     '00000000-0000-4000-8000-000000001001',
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000801',
@@ -324,6 +446,7 @@ on conflict (id) do update set
   season_id = excluded.season_id,
   farmer_id = excluded.farmer_id,
   broker_id = excluded.broker_id,
+  trip_id = excluded.trip_id,
   transport_trip_id = excluded.transport_trip_id,
   rice_type_id = excluded.rice_type_id,
   authorization_letter_id = excluded.authorization_letter_id,
@@ -368,6 +491,7 @@ on conflict (id) do update set
 
 insert into processing_records (
   id,
+  trip_id,
   transport_trip_id,
   factory_id,
   season_id,
@@ -386,7 +510,8 @@ insert into processing_records (
 values
   (
     '00000000-0000-4000-8000-000000001301',
-    '00000000-0000-4000-8000-000000001001',
+    (select id from trips where code = 'TT-2026-001'),
+    null,
     '00000000-0000-4000-8000-000000000501',
     '00000000-0000-4000-8000-000000000101',
     'drying',
@@ -402,6 +527,7 @@ values
     'Seed drying record'
   )
 on conflict (id) do update set
+  trip_id = excluded.trip_id,
   transport_trip_id = excluded.transport_trip_id,
   factory_id = excluded.factory_id,
   season_id = excluded.season_id,

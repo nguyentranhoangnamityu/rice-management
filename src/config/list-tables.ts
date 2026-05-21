@@ -7,9 +7,13 @@ export type ListTableKey =
   | "transporter_boats"
   | "transport_routes"
   | "transport_trips"
+  | "trips"
   | "purchase_slips"
   | "authorization_letters"
   | "processing_records"
+  | "warehouses"
+  | "inventory_transactions"
+  | "trip_sales"
   | "attachments";
 
 type ListTableConfig = {
@@ -29,8 +33,12 @@ export const listTableConfig: Record<ListTableKey, ListTableConfig> = {
   },
   transport_routes: { orderColumn: "created_at", searchColumns: ["name", "note"] },
   transport_trips: { orderColumn: "trip_date", searchColumns: ["code", "note"] },
+  trips: { orderColumn: "start_date", searchColumns: ["code", "note"] },
   purchase_slips: { orderColumn: "purchase_date", searchColumns: ["note"] },
   authorization_letters: { orderColumn: "created_at", searchColumns: ["code", "note"] },
   processing_records: { orderColumn: "processed_date", searchColumns: ["note"] },
+  warehouses: { orderColumn: "created_at", searchColumns: ["name", "address", "note"] },
+  inventory_transactions: { orderColumn: "transaction_date", searchColumns: ["note"] },
+  trip_sales: { orderColumn: "sale_date", searchColumns: ["buyer_name", "note"] },
   attachments: { orderColumn: "uploaded_at", searchColumns: ["file_name"] },
 };

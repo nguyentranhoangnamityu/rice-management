@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, Plus, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -27,6 +27,7 @@ const factorySchema = z.object({
   bank_name: z.string().trim().optional(),
   bank_account_number: z.string().trim().optional(),
   bank_account_name: z.string().trim().optional(),
+  worker_allowance_per_kg: z.number().min(0, "Bồi dưỡng/kg không được âm"),
   address: z.string().trim().optional(),
   note: z.string().trim().optional(),
 });
@@ -41,6 +42,7 @@ const emptyValues: FactoryFormValues = {
   bank_name: "",
   bank_account_number: "",
   bank_account_name: "",
+  worker_allowance_per_kg: 0,
   address: "",
   note: "",
 };
@@ -86,6 +88,7 @@ export function FactoriesPage() {
       bank_name: item.bank_name ?? "",
       bank_account_number: item.bank_account_number ?? "",
       bank_account_name: item.bank_account_name ?? "",
+      worker_allowance_per_kg: item.worker_allowance_per_kg ?? 0,
       address: item.address ?? "",
       note: item.note ?? "",
     });
@@ -110,6 +113,7 @@ export function FactoriesPage() {
       bank_name: toNullable(values.bank_name),
       bank_account_number: toNullable(values.bank_account_number),
       bank_account_name: toNullable(values.bank_account_name),
+      worker_allowance_per_kg: values.worker_allowance_per_kg,
       address: toNullable(values.address),
       note: toNullable(values.note),
     };
@@ -179,11 +183,6 @@ export function FactoriesPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <label className="field">
@@ -236,6 +235,12 @@ export function FactoriesPage() {
           </label>
 
           <label className="field">
+            <span>Bồi dưỡng công nhân/kg (đ)</span>
+            <input type="number" min="0" step="1" {...register("worker_allowance_per_kg", { valueAsNumber: true })} />
+            {errors.worker_allowance_per_kg ? <small>{errors.worker_allowance_per_kg.message}</small> : null}
+          </label>
+
+          <label className="field">
             <span>Ghi chú</span>
             <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
           </label>
@@ -276,6 +281,7 @@ export function FactoriesPage() {
                     <th>Loại</th>
                     <th>Điện thoại</th>
                     <th>Mã số thuế</th>
+                    <th>Bồi dưỡng/kg</th>
                     <th>Ngân hàng</th>
                     <th aria-label="Thao tác" />
                   </tr>
@@ -287,6 +293,7 @@ export function FactoriesPage() {
                       <td>{formatFactoryType(item.type)}</td>
                       <td>{item.phone || "-"}</td>
                       <td>{item.tax_code || "-"}</td>
+                      <td>{new Intl.NumberFormat("vi-VN").format(item.worker_allowance_per_kg ?? 0)} đ</td>
                       <td>
                         <div>{item.bank_name || "-"}</div>
                         <span className="muted-text">

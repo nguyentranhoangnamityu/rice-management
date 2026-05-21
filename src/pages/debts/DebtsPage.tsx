@@ -12,8 +12,9 @@ type Factory = Tables<"factories">;
 type ProcessingRecord = Tables<"processing_records">;
 type PurchaseSlip = Tables<"purchase_slips">;
 type Season = Tables<"seasons">;
+type Trip = Tables<"trips">;
+type TripExpense = Tables<"trip_expenses">;
 type TransporterBoat = Tables<"transporter_boats">;
-type TransportTrip = Tables<"transport_trips">;
 type PaymentStatus = Enums<"payment_status">;
 
 type BrokerDebtRow = {
@@ -49,7 +50,8 @@ export function DebtsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [purchaseSlips, setPurchaseSlips] = useState<PurchaseSlip[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [transportTrips, setTransportTrips] = useState<TransportTrip[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripExpenses, setTripExpenses] = useState<TripExpense[]>([]);
   const [boats, setBoats] = useState<TransporterBoat[]>([]);
   const [processingRecords, setProcessingRecords] = useState<ProcessingRecord[]>([]);
   const [factories, setFactories] = useState<Factory[]>([]);
@@ -69,7 +71,8 @@ export function DebtsPage() {
       seasonsResult,
       purchaseSlipsResult,
       brokersResult,
-      transportTripsResult,
+      tripsResult,
+      tripExpensesResult,
       boatsResult,
       processingRecordsResult,
       factoriesResult,
@@ -77,7 +80,8 @@ export function DebtsPage() {
       supabase.from("seasons").select("*").order("from_date", { ascending: false }),
       supabase.from("purchase_slips").select("*"),
       supabase.from("brokers").select("*").order("name", { ascending: true }),
-      supabase.from("transport_trips").select("*"),
+      supabase.from("trips").select("*"),
+      supabase.from("trip_expenses").select("*"),
       supabase.from("transporter_boats").select("*").order("boat_name", { ascending: true }),
       supabase.from("processing_records").select("*"),
       supabase.from("factories").select("*").order("name", { ascending: true }),
@@ -87,7 +91,8 @@ export function DebtsPage() {
       seasonsResult.error ??
       purchaseSlipsResult.error ??
       brokersResult.error ??
-      transportTripsResult.error ??
+      tripsResult.error ??
+      tripExpensesResult.error ??
       boatsResult.error ??
       processingRecordsResult.error ??
       factoriesResult.error;
@@ -101,7 +106,8 @@ export function DebtsPage() {
     setSeasons(seasonsResult.data ?? []);
     setPurchaseSlips(purchaseSlipsResult.data ?? []);
     setBrokers(brokersResult.data ?? []);
-    setTransportTrips(transportTripsResult.data ?? []);
+    setTrips(tripsResult.data ?? []);
+    setTripExpenses(tripExpensesResult.data ?? []);
     setBoats(boatsResult.data ?? []);
     setProcessingRecords(processingRecordsResult.data ?? []);
     setFactories(factoriesResult.data ?? []);
@@ -122,16 +128,11 @@ export function DebtsPage() {
     const brokerMap = new Map(brokers.map((broker) => [broker.id, broker]));
     const boatMap = new Map(boats.map((boat) => [boat.id, boat]));
     const factoryMap = new Map(factories.map((factory) => [factory.id, factory]));
+    const tripMap = new Map(trips.map((trip) => [trip.id, trip]));
 
     const filteredPurchaseSlips = purchaseSlips.filter((item) => {
       const seasonMatch = !seasonFilter || item.season_id === seasonFilter;
       const paymentMatch = !paymentStatusFilter || item.payment_status === paymentStatusFilter;
-      return seasonMatch && paymentMatch;
-    });
-
-    const filteredTransportTrips = transportTrips.filter((trip) => {
-      const seasonMatch = !seasonFilter || trip.season_id === seasonFilter;
-      const paymentMatch = !paymentStatusFilter || trip.payment_status === paymentStatusFilter;
       return seasonMatch && paymentMatch;
     });
 
@@ -157,7 +158,17 @@ export function DebtsPage() {
     }
 
     const transportDebtMap = new Map<string, TransportDebtRow>();
-    for (const trip of filteredTransportTrips) {
+    const tripIdsByBoat = new Map<string, Set<string>>();
+    for (const expense of tripExpenses) {
+      if (!isTransportExpense(expense.type)) continue;
+
+      const trip = tripMap.get(expense.trip_id);
+      if (!trip?.transporter_boat_id) continue;
+
+      const seasonMatch = !seasonFilter || trip.season_id === seasonFilter;
+      const paymentMatch = !paymentStatusFilter || expense.payment_status === paymentStatusFilter;
+      if (!seasonMatch || !paymentMatch) continue;
+
       const boat = boatMap.get(trip.transporter_boat_id);
       const current = transportDebtMap.get(trip.transporter_boat_id) ?? {
         boatId: trip.transporter_boat_id,
@@ -167,8 +178,11 @@ export function DebtsPage() {
         totalCost: 0,
       };
 
-      current.totalTrips += 1;
-      current.totalCost += trip.total_cost;
+      const tripIds = tripIdsByBoat.get(trip.transporter_boat_id) ?? new Set<string>();
+      tripIds.add(trip.id);
+      tripIdsByBoat.set(trip.transporter_boat_id, tripIds);
+      current.totalTrips = tripIds.size;
+      current.totalCost += expense.amount;
       transportDebtMap.set(trip.transporter_boat_id, current);
     }
 
@@ -215,7 +229,8 @@ export function DebtsPage() {
     processingRecords,
     purchaseSlips,
     seasonFilter,
-    transportTrips,
+    tripExpenses,
+    trips,
   ]);
 
   const paginatedBrokerRows = useMemo(() => {
@@ -476,6 +491,14 @@ function buildDebtExportTables(summaries: {
       ]),
     },
   ];
+}
+
+function isTransportExpense(type: TripExpense["type"]) {
+  return [
+    "boat_cost",
+    "transport_cost",
+    "weighing_fee",
+  ].includes(type);
 }
 
 function formatNumber(value: number) {

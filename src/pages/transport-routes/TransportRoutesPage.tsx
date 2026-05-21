@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Edit2, Plus, Search, Trash2, X } from "lucide-react";
+import { Edit2, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -7,8 +7,13 @@ import { ModalShell } from "../../components/ui/ModalShell";
 import { PaginationControls } from "../../components/ui/PaginationControls";
 import { useServerPagination } from "../../hooks/useServerPagination";
 import { supabase } from "../../lib/supabase";
-import type { Tables } from "../../types/database";
+import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
+import {
+  formatTransportPriceBasis,
+  formatTransportPriceLabel,
+  transportPriceBasisOptions,
+} from "../../lib/transport-cost";
 
 type TransportRoute = Tables<"transport_routes">;
 type TransportRouteStop = Tables<"transport_route_stops">;
@@ -17,9 +22,13 @@ type RouteWithStops = TransportRoute & {
   stops: TransportRouteStop[];
 };
 
+type TransportPriceBasis = Enums<"transport_price_basis">;
+
 const routeSchema = z.object({
   name: z.string().trim().min(1, "Vui lòng nhập tên tuyến"),
   note: z.string().trim().optional(),
+  transport_price_basis: z.enum(["loaded_weight", "unloaded_weight", "fixed"]),
+  transport_price: z.number().min(0, "Giá vận chuyển không được âm"),
   stops: z
     .array(
       z.object({
@@ -35,6 +44,8 @@ type RouteFormValues = z.infer<typeof routeSchema>;
 const emptyValues: RouteFormValues = {
   name: "",
   note: "",
+  transport_price_basis: "unloaded_weight",
+  transport_price: 0,
   stops: [{ location_name: "", note: "" }],
 };
 
@@ -129,6 +140,8 @@ export function TransportRoutesPage() {
     reset({
       name: item.name,
       note: item.note ?? "",
+      transport_price_basis: item.transport_price_basis,
+      transport_price: item.transport_price,
       stops:
         item.stops.length > 0
           ? item.stops.map((stop) => ({
@@ -153,6 +166,8 @@ export function TransportRoutesPage() {
     const routePayload = {
       name: values.name,
       note: toNullable(values.note),
+      transport_price_basis: values.transport_price_basis,
+      transport_price: values.transport_price,
     };
 
     const { data: savedRoute, error: routeError } = editingItem
@@ -233,7 +248,7 @@ export function TransportRoutesPage() {
       <header className="page-header">
         <div>
           <h1>Tuyến vận chuyển</h1>
-          <p>Quản lý tuyến và các điểm dừng theo thứ tự di chuyển.</p>
+          <p>Quản lý tuyến, giá vận chuyển mặc định và các điểm dừng theo thứ tự di chuyển.</p>
         </div>
         <div className="header-actions">
           <button
@@ -257,11 +272,6 @@ export function TransportRoutesPage() {
             <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
           <div className="card-title-row">
             <h2>{formTitle}</h2>
-            {editingItem ? (
-              <button className="icon-button" type="button" onClick={clearForm} aria-label="Hủy sửa">
-                <X size={18} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <label className="field">
@@ -274,6 +284,30 @@ export function TransportRoutesPage() {
             <span>Ghi chú tuyến</span>
             <textarea {...register("note")} rows={3} placeholder="Thông tin thêm nếu cần" />
           </label>
+
+          <div className="field-grid">
+            <label className="field">
+              <span>Cách tính giá vận chuyển</span>
+              <select {...register("transport_price_basis")}>
+                {transportPriceBasisOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Giá vận chuyển</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                {...register("transport_price", { valueAsNumber: true })}
+                placeholder="VD: 120"
+              />
+              {errors.transport_price ? <small>{errors.transport_price.message}</small> : null}
+            </label>
+          </div>
 
           <div className="stops-editor">
             <div className="card-title-row">
@@ -359,6 +393,7 @@ export function TransportRoutesPage() {
                 <thead>
                   <tr>
                     <th>Tên tuyến</th>
+                    <th>Giá VC</th>
                     <th>Lộ trình</th>
                     <th>Ghi chú</th>
                     <th aria-label="Thao tác" />
@@ -368,6 +403,10 @@ export function TransportRoutesPage() {
                   {items.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name}</td>
+                      <td>
+                        <div>{formatTransportPriceLabel(item.transport_price_basis, item.transport_price)}</div>
+                        <small className="muted-text">{formatTransportPriceBasis(item.transport_price_basis)}</small>
+                      </td>
                       <td>{formatRoutePath(item.stops)}</td>
                       <td>{item.note || "-"}</td>
                       <td>
