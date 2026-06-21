@@ -88,11 +88,13 @@ export type Database = {
           farmer_id: string | null;
           broker_id: string | null;
           authorized_receiver_broker_id: string | null;
+          authorized_recipient_id: string | null;
           signed_date: string | null;
           valid_from: string | null;
           valid_to: string | null;
           status: Database["public"]["Enums"]["authorization_letter_status"];
           pdf_attachment_id: string | null;
+          source_import_key: string | null;
           note: string | null;
           created_at: string;
           updated_at: string;
@@ -103,16 +105,54 @@ export type Database = {
           farmer_id?: string | null;
           broker_id?: string | null;
           authorized_receiver_broker_id?: string | null;
+          authorized_recipient_id?: string | null;
           signed_date?: string | null;
           valid_from?: string | null;
           valid_to?: string | null;
           status?: Database["public"]["Enums"]["authorization_letter_status"];
           pdf_attachment_id?: string | null;
+          source_import_key?: string | null;
           note?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["authorization_letters"]["Insert"]>;
+        Relationships: [];
+      };
+      authorized_recipients: {
+        Row: {
+          id: string;
+          import_identity_key: string | null;
+          name: string;
+          citizen_id: string | null;
+          address: string | null;
+          date_of_birth: string | null;
+          citizen_id_issued_date: string | null;
+          citizen_id_issued_place: string | null;
+          bank_account_number: string | null;
+          bank_name: string | null;
+          bank_account_name: string | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          import_identity_key?: string | null;
+          name: string;
+          citizen_id?: string | null;
+          address?: string | null;
+          date_of_birth?: string | null;
+          citizen_id_issued_date?: string | null;
+          citizen_id_issued_place?: string | null;
+          bank_account_number?: string | null;
+          bank_name?: string | null;
+          bank_account_name?: string | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["authorized_recipients"]["Insert"]>;
         Relationships: [];
       };
       authorization_letter_purchase_slips: {
@@ -238,6 +278,7 @@ export type Database = {
       farmers: {
         Row: {
           id: string;
+          import_identity_key: string | null;
           name: string;
           phone: string | null;
           citizen_id: string | null;
@@ -256,6 +297,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          import_identity_key?: string | null;
           name: string;
           phone?: string | null;
           citizen_id?: string | null;
@@ -442,14 +484,15 @@ export type Database = {
       purchase_slips: {
         Row: {
           id: string;
-          season_id: string;
+          season_id: string | null;
           farmer_id: string;
-          broker_id: string;
+          broker_id: string | null;
           trip_id: string | null;
           transport_trip_id: string | null;
           rice_type_id: string;
           authorization_letter_id: string | null;
           authorized_receiver_broker_id: string | null;
+          authorized_recipient_id: string | null;
           purchase_date: string;
           weight_kg: number;
           unit_price: number;
@@ -457,20 +500,32 @@ export type Database = {
           broker_commission_per_kg: number;
           broker_commission_total: number;
           payment_status: Database["public"]["Enums"]["payment_status"];
+          contract_sequence: number | null;
+          source_import_key: string | null;
+          source_row_number: number | null;
+          source_unit: string | null;
+          farmer_bank_account_number_snapshot: string | null;
+          farmer_bank_name_snapshot: string | null;
+          authorized_person_name_snapshot: string | null;
+          authorized_person_citizen_id_snapshot: string | null;
+          authorized_person_address_snapshot: string | null;
+          authorized_person_bank_account_number_snapshot: string | null;
+          authorized_person_bank_name_snapshot: string | null;
           note: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          season_id: string;
+          season_id?: string | null;
           farmer_id: string;
-          broker_id: string;
+          broker_id?: string | null;
           trip_id?: string | null;
           transport_trip_id?: string | null;
           rice_type_id: string;
           authorization_letter_id?: string | null;
           authorized_receiver_broker_id?: string | null;
+          authorized_recipient_id?: string | null;
           purchase_date: string;
           weight_kg: number;
           unit_price: number;
@@ -478,6 +533,17 @@ export type Database = {
           broker_commission_per_kg?: number;
           broker_commission_total?: number;
           payment_status?: Database["public"]["Enums"]["payment_status"];
+          contract_sequence?: number | null;
+          source_import_key?: string | null;
+          source_row_number?: number | null;
+          source_unit?: string | null;
+          farmer_bank_account_number_snapshot?: string | null;
+          farmer_bank_name_snapshot?: string | null;
+          authorized_person_name_snapshot?: string | null;
+          authorized_person_citizen_id_snapshot?: string | null;
+          authorized_person_address_snapshot?: string | null;
+          authorized_person_bank_account_number_snapshot?: string | null;
+          authorized_person_bank_name_snapshot?: string | null;
           note?: string | null;
           created_at?: string;
           updated_at?: string;

@@ -181,7 +181,7 @@ export function AuthorizationLettersPage() {
       (slipsResult.data ?? []).map((slip) => ({
         ...slip,
         farmer: farmerMap.get(slip.farmer_id) ?? null,
-        broker: brokerMapRef.get(slip.broker_id) ?? null,
+        broker: slip.broker_id ? brokerMapRef.get(slip.broker_id) ?? null : null,
         riceType: riceTypeMap.get(slip.rice_type_id) ?? null,
       })),
     );

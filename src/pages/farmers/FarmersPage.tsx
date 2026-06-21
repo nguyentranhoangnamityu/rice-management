@@ -21,15 +21,19 @@ type Farmer = Tables<"farmers">;
 
 const farmerSchema = z.object({
   name: z.string().trim().min(1, "Vui lòng nhập tên nông dân"),
-  phone: z.string().trim().min(1, "Vui lòng nhập số điện thoại"),
-  citizen_id: z.string().trim().min(1, "Vui lòng nhập CCCD"),
+  phone: z.string().trim().optional(),
+  citizen_id: z.string().trim().optional(),
   gender: z
     .string()
     .trim()
-    .refine((value) => value === "Nam" || value === "Nữ", "Vui lòng chọn giới tính"),
-  date_of_birth: z.string().trim().min(1, "Vui lòng chọn ngày sinh"),
-  permanent_address: z.string().trim().min(1, "Vui lòng nhập địa chỉ thường trú"),
-  citizen_id_issued_date: z.string().trim().min(1, "Vui lòng chọn ngày cấp CCCD"),
+    .refine(
+      (value) => value.length === 0 || value === "Nam" || value === "Nữ",
+      "Giới tính không hợp lệ",
+    )
+    .optional(),
+  date_of_birth: z.string().trim().optional(),
+  permanent_address: z.string().trim().optional(),
+  citizen_id_issued_date: z.string().trim().optional(),
   citizen_id_qr_raw_text: z.string().trim().optional(),
   bank_name: z.string().trim().optional(),
   bank_account_number: z.string().trim().optional(),

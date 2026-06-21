@@ -1347,7 +1347,7 @@ export function TripDetailPage() {
             <h2 style={{ fontSize: "18px", fontWeight: "800" }}>Hiệu quả Tài chính Chuyến hàng (Tạm tính)</h2>
           </div>
           
-          <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+          <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
             {/* Sản lượng mua */}
             <div style={{ background: "var(--primary-soft)", padding: "16px", borderRadius: "var(--radius-md)", borderLeft: "4px solid var(--primary)", boxShadow: "var(--shadow-sm)" }}>
               <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "600", display: "block" }}>SẢN LƯỢNG THU MUA</span>
@@ -1432,7 +1432,7 @@ export function TripDetailPage() {
 
           {activeEditStep === "step1" ? (
             <form onSubmit={saveStep1} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                 <label className="field">
                   <span>Mã chuyến hàng <span className="text-danger">*</span></span>
                   <input type="text" value={step1Form.code} onChange={(e) => setStep1Form({ ...step1Form, code: e.target.value })} required placeholder="VD: CH-2026-001" />
@@ -1459,7 +1459,7 @@ export function TripDetailPage() {
                 </label>
               </div>
 
-              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                 <label className="field">
                   <span>Ghe chở lúa</span>
                   <select value={step1Form.transporter_boat_id} onChange={(e) => setStep1Form({ ...step1Form, transporter_boat_id: e.target.value })}>
@@ -1486,7 +1486,7 @@ export function TripDetailPage() {
                 </label>
               </div>
 
-              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+              <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                 <label className="field">
                   <span>Cân nặng xuống ghe - tươi (kg)</span>
                   <div
@@ -1553,7 +1553,7 @@ export function TripDetailPage() {
               </div>
             </form>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px 24px", fontSize: "14px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px 24px", fontSize: "14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed var(--border-light)", paddingBottom: "6px" }}>
                 <span style={{ color: "var(--text-muted)" }}>Mã chuyến hàng:</span>
                 <strong style={{ color: "var(--primary)" }}>{trip.code}</strong>
@@ -1879,7 +1879,7 @@ export function TripDetailPage() {
                 </h3>
                 
                 <form onSubmit={saveExpense} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Loại chi phí <span className="text-danger">*</span></span>
                       <select value={expenseForm.type} onChange={(e) => setExpenseForm({ ...expenseForm, type: e.target.value as TripExpenseType })}>
@@ -1900,7 +1900,7 @@ export function TripDetailPage() {
                     </label>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Bên nhận / Tên chủ chi</span>
                       <input type="text" value={expenseForm.party_name} onChange={(e) => setExpenseForm({ ...expenseForm, party_name: e.target.value })} placeholder="VD: Nhà máy sấy Chánh Đức, Ông Tư..." />
@@ -2014,7 +2014,7 @@ export function TripDetailPage() {
                 {dryingRecords.length === 0 ? (
                   <div className="empty-state" style={{ padding: "20px" }}>Chưa ghi nhận đợt sấy nào cho chuyến này.</div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     {dryingRecords.map((record) => {
                       const factory = factoryMap.get(record.factory_id);
                       return (
@@ -2052,7 +2052,7 @@ export function TripDetailPage() {
                 </h3>
 
                 <form onSubmit={saveDryingRecord} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Nhà máy / Lò sấy <span className="text-danger">*</span></span>
                       <select value={dryingForm.factory_id} onChange={(e) => setDryingForm({ ...dryingForm, factory_id: e.target.value })} required>
@@ -2074,7 +2074,7 @@ export function TripDetailPage() {
                     </label>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Đơn giá dịch vụ sấy (đ/kg lúa khô)</span>
                       <input type="number" value={dryingForm.unit_price || ""} onChange={(e) => setDryingForm({ ...dryingForm, unit_price: Number(e.target.value) })} placeholder="VD: 350" />
@@ -2091,7 +2091,7 @@ export function TripDetailPage() {
                     </label>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Thanh toán sấy</span>
                       <select value={dryingForm.payment_status} onChange={(e) => setDryingForm({ ...dryingForm, payment_status: e.target.value as PaymentStatus })}>
@@ -2138,7 +2138,7 @@ export function TripDetailPage() {
                           <span style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>Ngày thực hiện: {formatDate(record.processed_date)}</span>
                         </div>
                         
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
                           <div>Lúa tươi đầu vào: <strong>{formatNumber(record.input_weight_kg)} kg</strong></div>
                           <div>Lúa khô đầu ra: <strong>{formatNumber(record.output_weight_kg)} kg</strong></div>
                           <div>Đơn giá sấy: <strong>{formatMoney(record.unit_price)}/kg</strong></div>
@@ -2233,7 +2233,7 @@ export function TripDetailPage() {
                 {inventoryTransactions.length === 0 ? (
                   <div className="empty-state" style={{ padding: "20px" }}>Chưa có phiếu nhập kho cho chuyến này.</div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     {inventoryTransactions.map((tx) => (
                       <div key={tx.id} style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", padding: "14px", background: "var(--bg-app)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid var(--border-light)", paddingBottom: "6px" }}>
@@ -2287,7 +2287,7 @@ export function TripDetailPage() {
                         </div>
                       </div>
 
-                      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+                      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                         <label className="field">
                           <span>Kho nhập <span className="text-danger">*</span></span>
                           <select
@@ -2332,7 +2332,7 @@ export function TripDetailPage() {
                     </>
                   ) : (
                     <>
-                      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                         <label className="field">
                           <span>Kho nhập <span className="text-danger">*</span></span>
                           <select value={inventoryForm.warehouse_id} onChange={(e) => setInventoryForm({ ...inventoryForm, warehouse_id: e.target.value })} required>
@@ -2416,7 +2416,7 @@ export function TripDetailPage() {
                         <strong style={{ fontSize: "15px", color: "var(--primary)" }}>{warehouseMap.get(tx.warehouse_id)?.name || "Kho"}</strong>
                         <span style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>Ngày nhập: {formatDate(tx.transaction_date)}</span>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
                         <div>Loại hàng: <strong>{formatInventoryItemType(tx.item_type)}</strong></div>
                         <div>Khối lượng nhập: <strong>{formatNumber(Math.abs(tx.quantity_kg))} kg</strong></div>
                       </div>
@@ -2463,7 +2463,7 @@ export function TripDetailPage() {
                 {millingRecords.length === 0 ? (
                   <div className="empty-state" style={{ padding: "20px" }}>Chưa ghi nhận đợt xay xát nào cho chuyến này.</div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     {millingRecords.map((record) => {
                       const factory = factoryMap.get(record.factory_id);
                       const recovery = record.input_weight_kg > 0 ? round2((record.output_weight_kg / record.input_weight_kg) * 100) : 0;
@@ -2502,7 +2502,7 @@ export function TripDetailPage() {
                 </h3>
 
                 <form onSubmit={saveMillingRecord} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Nhà máy xay xát <span className="text-danger">*</span></span>
                       <select value={millingForm.factory_id} onChange={(e) => setMillingForm({ ...millingForm, factory_id: e.target.value })} required>
@@ -2528,7 +2528,7 @@ export function TripDetailPage() {
                     Tỷ lệ thu hồi gạo ước tính: <strong className="profit-positive">{millingForm.input_weight_kg > 0 ? round2((millingForm.output_weight_kg / millingForm.input_weight_kg) * 100) : 0} %</strong>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Đơn giá xay xát (đ/kg lúa đầu vào)</span>
                       <input type="number" value={millingForm.unit_price || ""} onChange={(e) => setMillingForm({ ...millingForm, unit_price: Number(e.target.value) })} placeholder="VD: 150" />
@@ -2545,7 +2545,7 @@ export function TripDetailPage() {
                     </label>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Thanh toán dịch vụ xay</span>
                       <select value={millingForm.payment_status} onChange={(e) => setMillingForm({ ...millingForm, payment_status: e.target.value as PaymentStatus })}>
@@ -2593,7 +2593,7 @@ export function TripDetailPage() {
                           <span style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>Ngày thực hiện: {formatDate(record.processed_date)}</span>
                         </div>
                         
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
                           <div>Lúa đầu vào xay: <strong>{formatNumber(record.input_weight_kg)} kg</strong></div>
                           <div>Gạo thu hồi đầu ra: <strong>{formatNumber(record.output_weight_kg)} kg</strong></div>
                           <div>Tỷ lệ thu hồi gạo: <strong className="profit-positive">{formatNumber(recoveryRate)} %</strong></div>
@@ -2650,7 +2650,7 @@ export function TripDetailPage() {
                 {sales.length === 0 ? (
                   <div className="empty-state" style={{ padding: "20px" }}>Chưa ghi nhận giao dịch bán gạo nào.</div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     {sales.map((sale) => (
                       <div key={sale.id} style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", padding: "14px", background: "var(--bg-app)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid var(--border-light)", paddingBottom: "6px" }}>
@@ -2683,7 +2683,7 @@ export function TripDetailPage() {
                 </h3>
 
                 <form onSubmit={saveSaleRecord} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Tên khách hàng / Người mua <span className="text-danger">*</span></span>
                       <input type="text" value={saleForm.buyer_name} onChange={(e) => setSaleForm({ ...saleForm, buyer_name: e.target.value })} required placeholder="VD: Công ty Cỏ May, Kho gạo miền Tây..." />
@@ -2700,7 +2700,7 @@ export function TripDetailPage() {
                     </label>
                   </div>
 
-                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+                  <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "16px" }}>
                     <label className="field">
                       <span>Tổng doanh thu (VND - Tự tính)</span>
                       <input type="number" value={saleForm.total_amount || ""} onChange={(e) => setSaleForm({ ...saleForm, total_amount: Number(e.target.value) })} placeholder="Auto-calculated" />
@@ -2755,7 +2755,7 @@ export function TripDetailPage() {
                         <span style={{ fontSize: "12.5px", color: "var(--text-muted)" }}>Ngày thực hiện: {formatDate(sale.sale_date)}</span>
                       </div>
                       
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px 20px", fontSize: "13.5px" }}>
                         <div>Khối lượng gạo bán: <strong>{formatNumber(sale.rice_weight_kg)} kg</strong></div>
                         <div>Đơn giá gạo bán: <strong>{formatMoney(sale.unit_price)}/kg</strong></div>
                         <div>Doanh thu xuất bán: <strong style={{ color: "var(--success)", fontSize: "14.5px" }}>{formatMoney(sale.total_amount)}</strong></div>

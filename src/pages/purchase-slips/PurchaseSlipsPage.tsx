@@ -1,9 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Docxtemplater from "docxtemplater";
 import { saveAs } from "file-saver";
-import { Edit2, FileText, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, Edit2, FileText, Files, Plus, Search, Trash2, X } from "lucide-react";
 import PizZip from "pizzip";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -23,6 +23,7 @@ type Broker = Tables<"brokers">;
 type Trip = Tables<"trips">;
 type RiceType = Tables<"rice_types">;
 type AuthorizationLetter = Tables<"authorization_letters">;
+type AuthorizedRecipient = Tables<"authorized_recipients">;
 type PaymentStatus = Enums<"payment_status">;
 
 type SlipRow = PurchaseSlip & {
@@ -33,6 +34,7 @@ type SlipRow = PurchaseSlip & {
   riceType?: RiceType | null;
   authorizationLetter?: AuthorizationLetter | null;
   authorizedReceiverBroker?: Broker | null;
+  authorizedRecipient?: AuthorizedRecipient | null;
 };
 
 const paymentStatusOptions: { value: PaymentStatus; label: string }[] = [
@@ -127,11 +129,17 @@ export function PurchaseSlipsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [riceTypes, setRiceTypes] = useState<RiceType[]>([]);
   const [authorizationLetters, setAuthorizationLetters] = useState<AuthorizationLetter[]>([]);
+  const [authorizedRecipients, setAuthorizedRecipients] = useState<AuthorizedRecipient[]>([]);
   const [referenceLoading, setReferenceLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingContractId, setGeneratingContractId] = useState<string | null>(null);
   const [generatingDeliveryReceiptId, setGeneratingDeliveryReceiptId] = useState<string | null>(null);
+  const [generatingAuthorizationLetterId, setGeneratingAuthorizationLetterId] = useState<string | null>(null);
+  const [generatingDossierId, setGeneratingDossierId] = useState<string | null>(null);
+  const [bulkGenerating, setBulkGenerating] = useState<"selected" | "all" | null>(null);
+  const [bulkProgress, setBulkProgress] = useState("");
+  const [selectedSlipIds, setSelectedSlipIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<SlipRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -217,7 +225,7 @@ export function PurchaseSlipsPage() {
   function openActionMenu(itemId: string, element: HTMLElement) {
     const rect = element.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 172;
+    const menuHeight = 270;
     const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
     const preferredTop = rect.bottom + 6;
     const top = preferredTop + menuHeight > window.innerHeight
@@ -239,14 +247,17 @@ export function PurchaseSlipsPage() {
     () => new Map(authorizationLetters.map((letter) => [letter.id, letter])),
     [authorizationLetters],
   );
+  const authorizedRecipientMap = useMemo(
+    () => new Map(authorizedRecipients.map((recipient) => [recipient.id, recipient])),
+    [authorizedRecipients],
+  );
 
-  const items = useMemo<SlipRow[]>(
-    () =>
-      slipRows.map((slip) => ({
+  const hydrateSlip = useCallback(
+    (slip: PurchaseSlip): SlipRow => ({
         ...slip,
-        season: seasonMap.get(slip.season_id) ?? null,
+        season: slip.season_id ? seasonMap.get(slip.season_id) ?? null : null,
         farmer: farmerMap.get(slip.farmer_id) ?? null,
-        broker: brokerMap.get(slip.broker_id) ?? null,
+        broker: slip.broker_id ? brokerMap.get(slip.broker_id) ?? null : null,
         trip: slip.trip_id ? tripMap.get(slip.trip_id) ?? null : null,
         riceType: riceTypeMap.get(slip.rice_type_id) ?? null,
         authorizationLetter: slip.authorization_letter_id
@@ -255,17 +266,26 @@ export function PurchaseSlipsPage() {
         authorizedReceiverBroker: slip.authorized_receiver_broker_id
           ? brokerMap.get(slip.authorized_receiver_broker_id) ?? null
           : null,
-      })),
+        authorizedRecipient: slip.authorized_recipient_id
+          ? authorizedRecipientMap.get(slip.authorized_recipient_id) ?? null
+          : null,
+      }),
     [
-      slipRows,
       seasonMap,
       farmerMap,
       brokerMap,
       tripMap,
       riceTypeMap,
       authorizationLetterMap,
+      authorizedRecipientMap,
     ],
   );
+  const items = useMemo<SlipRow[]>(
+    () => slipRows.map(hydrateSlip),
+    [hydrateSlip, slipRows],
+  );
+  const allPageSelected =
+    items.length > 0 && items.every((item) => selectedSlipIds.includes(item.id));
 
   const formTitle = editingItem ? "Sửa phiếu mua" : "Thêm phiếu mua";
 
@@ -279,6 +299,7 @@ export function PurchaseSlipsPage() {
       tripsResult,
       riceTypesResult,
       authorizationLettersResult,
+      authorizedRecipientsResult,
     ] = await Promise.all([
       supabase.from("seasons").select("*").order("from_date", { ascending: false }),
       supabase.from("farmers").select("*").order("name", { ascending: true }),
@@ -286,6 +307,7 @@ export function PurchaseSlipsPage() {
       supabase.from("trips").select("*").order("start_date", { ascending: false }),
       supabase.from("rice_types").select("*").order("name", { ascending: true }),
       supabase.from("authorization_letters").select("*").order("created_at", { ascending: false }),
+      supabase.from("authorized_recipients").select("*").order("name", { ascending: true }),
     ]);
 
     const firstError =
@@ -294,7 +316,8 @@ export function PurchaseSlipsPage() {
       brokersResult.error ??
       tripsResult.error ??
       riceTypesResult.error ??
-      authorizationLettersResult.error;
+      authorizationLettersResult.error ??
+      authorizedRecipientsResult.error;
 
     if (firstError) {
       setError(formatDbError(firstError));
@@ -305,6 +328,7 @@ export function PurchaseSlipsPage() {
       setTrips(tripsResult.data ?? []);
       setRiceTypes(riceTypesResult.data ?? []);
       setAuthorizationLetters(authorizationLettersResult.data ?? []);
+      setAuthorizedRecipients(authorizedRecipientsResult.data ?? []);
     }
 
     setReferenceLoading(false);
@@ -341,9 +365,9 @@ export function PurchaseSlipsPage() {
   function startEdit(item: SlipRow) {
     setEditingItem(item);
     reset({
-      season_id: item.season_id,
+      season_id: item.season_id ?? "",
       farmer_id: item.farmer_id,
-      broker_id: item.broker_id,
+      broker_id: item.broker_id ?? "",
       trip_id: item.trip_id ?? "",
       rice_type_id: item.rice_type_id,
       authorization_letter_id: item.authorization_letter_id ?? "",
@@ -443,8 +467,9 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
+      const contractNumber = await getContractNumber(item);
 
-      doc.render(buildContractTemplateData(item));
+      doc.render(buildContractTemplateData(item, contractNumber));
 
       const blob = doc.getZip().generate({
         type: "blob",
@@ -471,7 +496,8 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
-      doc.render(buildDeliveryReceiptTemplateData(item));
+      const contractNumber = await getContractNumber(item);
+      doc.render(buildDeliveryReceiptTemplateData(item, contractNumber));
 
       const blob = doc.getZip().generate({
         type: "blob",
@@ -486,6 +512,187 @@ export function PurchaseSlipsPage() {
     } finally {
       setGeneratingDeliveryReceiptId(null);
     }
+  }
+
+  async function generateAuthorizationLetterDocx(item: SlipRow) {
+    if (!hasAuthorizedPerson(item)) {
+      setError("Phiếu mua này chưa có người được ủy quyền nhận tiền.");
+      return;
+    }
+
+    setGeneratingAuthorizationLetterId(item.id);
+    setError(null);
+
+    try {
+      const response = await fetch("/templates/GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx");
+      if (!response.ok) {
+        throw new Error(
+          "Không tìm thấy file mẫu giấy ủy quyền tại /templates/GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx.",
+        );
+      }
+
+      const templateBuffer = await response.arrayBuffer();
+      const doc = buildContractDoc(templateBuffer);
+      doc.render(buildAuthorizationLetterTemplateData(item));
+
+      const blob = doc.getZip().generate({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      saveAs(blob, buildAuthorizationLetterFileName(item));
+    } catch (currentError) {
+      const message = currentError instanceof Error
+        ? currentError.message
+        : "Không thể tạo giấy ủy quyền DOCX. Vui lòng kiểm tra lại file mẫu.";
+      setError(message);
+    } finally {
+      setGeneratingAuthorizationLetterId(null);
+    }
+  }
+
+  async function generateDossier(item: SlipRow) {
+    setGeneratingDossierId(item.id);
+    setError(null);
+
+    try {
+      const templates = await loadDossierTemplates();
+      const contractNumber = await getContractNumber(item);
+      const archive = await buildDossierArchive([item], templates, new Map([[item.id, contractNumber]]));
+      saveAs(archive, `bo-ho-so-${sanitizeFileName(item.farmer?.name || "nong-dan")}.zip`);
+    } catch (currentError) {
+      setError(formatDocumentGenerationError(currentError, "Không thể tạo bộ hồ sơ."));
+    } finally {
+      setGeneratingDossierId(null);
+    }
+  }
+
+  function toggleSlipSelection(slipId: string, checked: boolean) {
+    setSelectedSlipIds((current) =>
+      checked
+        ? Array.from(new Set([...current, slipId]))
+        : current.filter((id) => id !== slipId),
+    );
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    const currentPageIds = new Set(items.map((item) => item.id));
+    setSelectedSlipIds((current) =>
+      checked
+        ? Array.from(new Set([...current, ...currentPageIds]))
+        : current.filter((id) => !currentPageIds.has(id)),
+    );
+  }
+
+  async function generateBulkDossiers(mode: "selected" | "all") {
+    if (mode === "selected" && selectedSlipIds.length === 0) {
+      setError("Vui lòng chọn ít nhất một phiếu mua.");
+      return;
+    }
+
+    setBulkGenerating(mode);
+    setBulkProgress("Đang tải dữ liệu...");
+    setError(null);
+
+    try {
+      const query = supabase
+        .from("purchase_slips")
+        .select("*")
+        .order("purchase_date", { ascending: true })
+        .order("created_at", { ascending: true });
+      const result =
+        mode === "selected"
+          ? await query.in("id", selectedSlipIds)
+          : await query.range(0, 9999);
+
+      if (result.error) throw result.error;
+
+      const dossierItems = (result.data ?? []).map(hydrateSlip);
+      if (dossierItems.length === 0) throw new Error("Không có phiếu mua để tạo hồ sơ.");
+
+      const [templates, contractNumbers] = await Promise.all([
+        loadDossierTemplates(),
+        resolveContractNumbers(dossierItems),
+      ]);
+      const archive = await buildDossierArchive(
+        dossierItems,
+        templates,
+        contractNumbers,
+        (completed, totalItems) => {
+          setBulkProgress(`Đang tạo ${completed}/${totalItems} bộ hồ sơ...`);
+        },
+      );
+
+      saveAs(
+        archive,
+        mode === "all"
+          ? `toan-bo-ho-so-${new Date().toISOString().slice(0, 10)}.zip`
+          : `ho-so-da-chon-${dossierItems.length}-bo.zip`,
+      );
+      setBulkProgress(`Đã tạo ${dossierItems.length} bộ hồ sơ.`);
+    } catch (currentError) {
+      setError(formatDocumentGenerationError(currentError, "Không thể tạo hồ sơ đồng loạt."));
+      setBulkProgress("");
+    } finally {
+      setBulkGenerating(null);
+    }
+  }
+
+  async function resolveContractNumbers(dossierItems: SlipRow[]) {
+    const numbers = new Map<string, string>();
+    const missingByFarmer = new Map<string, SlipRow[]>();
+
+    for (const item of dossierItems) {
+      if (item.contract_sequence) {
+        numbers.set(item.id, formatContractNumber(item.contract_sequence, item.purchase_date));
+      } else {
+        const farmerItems = missingByFarmer.get(item.farmer_id) ?? [];
+        farmerItems.push(item);
+        missingByFarmer.set(item.farmer_id, farmerItems);
+      }
+    }
+
+    for (const [farmerId, farmerItems] of missingByFarmer) {
+      const { data, error: sequenceError } = await supabase
+        .from("purchase_slips")
+        .select("id,purchase_date,created_at")
+        .eq("farmer_id", farmerId)
+        .order("purchase_date", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (sequenceError) throw sequenceError;
+
+      const sequenceMap = new Map((data ?? []).map((slip, index) => [slip.id, index + 1]));
+      for (const item of farmerItems) {
+        numbers.set(
+          item.id,
+          formatContractNumber(sequenceMap.get(item.id) ?? 1, item.purchase_date),
+        );
+      }
+    }
+
+    return numbers;
+  }
+
+  async function getContractNumber(item: SlipRow) {
+    if (item.contract_sequence) {
+      return formatContractNumber(item.contract_sequence, item.purchase_date);
+    }
+
+    const { data, error: contractNumberError } = await supabase
+      .from("purchase_slips")
+      .select("id,purchase_date,created_at")
+      .eq("farmer_id", item.farmer_id)
+      .order("purchase_date", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (contractNumberError) throw contractNumberError;
+
+    const ordinal = Math.max(
+      1,
+      (data ?? []).findIndex((slip) => slip.id === item.id) + 1,
+    );
+    return formatContractNumber(ordinal, item.purchase_date);
   }
 
   return (
@@ -689,9 +896,32 @@ export function PurchaseSlipsPage() {
                 placeholder="Tìm theo nông dân, cò, chuyến hàng, loại lúa"
               />
             </label>
+            <div className="bulk-document-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={selectedSlipIds.length === 0 || bulkGenerating !== null}
+                onClick={() => void generateBulkDossiers("selected")}
+              >
+                <Files size={17} aria-hidden="true" />
+                {bulkGenerating === "selected"
+                  ? "Đang tạo..."
+                  : `Tạo bộ hồ sơ đã chọn (${selectedSlipIds.length})`}
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={total === 0 || bulkGenerating !== null}
+                onClick={() => void generateBulkDossiers("all")}
+              >
+                <Archive size={17} aria-hidden="true" />
+                {bulkGenerating === "all" ? "Đang tạo tất cả..." : `Tạo hồ sơ tất cả (${total})`}
+              </button>
+            </div>
           </div>
 
           {error ?? listError ? <div className="alert error-alert">{error ?? listError}</div> : null}
+          {bulkProgress ? <div className="bulk-progress" role="status">{bulkProgress}</div> : null}
 
           {loading ? (
             <div className="state-box">Đang tải phiếu mua...</div>
@@ -703,6 +933,14 @@ export function PurchaseSlipsPage() {
               <table className="data-table extra-wide-table">
                 <thead>
                   <tr>
+                    <th className="selection-column">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={(event) => toggleCurrentPage(event.target.checked)}
+                        aria-label="Chọn tất cả phiếu mua trên trang"
+                      />
+                    </th>
                     <th>Ngày</th>
                     <th>Nông dân</th>
                     <th>Cò lúa</th>
@@ -718,12 +956,20 @@ export function PurchaseSlipsPage() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id}>
+                      <td className="selection-column">
+                        <input
+                          type="checkbox"
+                          checked={selectedSlipIds.includes(item.id)}
+                          onChange={(event) => toggleSlipSelection(item.id, event.target.checked)}
+                          aria-label={`Chọn hồ sơ của ${item.farmer?.name ?? "nông dân"}`}
+                        />
+                      </td>
                       <td>{formatDate(item.purchase_date)}</td>
                       <td>{item.farmer?.name || "-"}</td>
                       <td>
                         <div>{item.broker?.name || "-"}</div>
-                        {item.authorizedReceiverBroker ? (
-                          <span className="muted-text">Nhận UQ: {item.authorizedReceiverBroker.name}</span>
+                        {getAuthorizedPersonName(item) ? (
+                          <span className="muted-text">Nhận UQ: {getAuthorizedPersonName(item)}</span>
                         ) : null}
                       </td>
                       <td>{item.trip?.code || "-"}</td>
@@ -760,6 +1006,20 @@ export function PurchaseSlipsPage() {
                               style={{ top: actionMenu.top, left: actionMenu.left }}
                               onMouseLeave={() => setActionMenu(null)}
                             >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void generateDossier(item);
+                                }}
+                                disabled={generatingDossierId === item.id}
+                                title="Tạo bộ hồ sơ gồm 3 tệp"
+                              >
+                                <Archive size={16} aria-hidden="true" />
+                                {generatingDossierId === item.id
+                                  ? "Đang tạo..."
+                                  : "Tạo bộ hồ sơ"}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -807,6 +1067,27 @@ export function PurchaseSlipsPage() {
                                 {generatingDeliveryReceiptId === item.id
                                   ? "Đang tạo..."
                                   : "Tạo biên bản giao nhận"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void generateAuthorizationLetterDocx(item);
+                                }}
+                                disabled={
+                                  !hasAuthorizedPerson(item) ||
+                                  generatingAuthorizationLetterId === item.id
+                                }
+                                title={
+                                  hasAuthorizedPerson(item)
+                                    ? "Tạo giấy ủy quyền DOCX"
+                                    : "Phiếu mua chưa có người được ủy quyền"
+                                }
+                              >
+                                <FileText size={16} aria-hidden="true" />
+                                {generatingAuthorizationLetterId === item.id
+                                  ? "Đang tạo..."
+                                  : "Tạo giấy ủy quyền"}
                               </button>
                             </div>,
                             document.body,
@@ -1054,13 +1335,14 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
-function buildContractTemplateData(item: SlipRow) {
+function buildContractTemplateData(item: SlipRow, contractNumber: string) {
   const purchaseDateParts = getDateParts(item.purchase_date);
   const farmerDateOfBirth = formatDateOrFillLine(item.farmer?.date_of_birth);
   const farmerIssuedDate = formatDateOrFillLine(item.farmer?.citizen_id_issued_date);
   const farmerIssuedPlace = fillLine();
 
   return {
+    contract_no: contractNumber,
     farmer_name: toText(item.farmer?.name),
     farmer_full_name: toText(item.farmer?.name),
     farmer_gender: toTextOrFillLine(item.farmer?.gender),
@@ -1077,8 +1359,12 @@ function buildContractTemplateData(item: SlipRow) {
     farmer_phone: toTextOrFillLine(item.farmer?.phone),
     farmer_permanent_address: toTextOrFillLine(item.farmer?.permanent_address),
     farmer_address: toTextOrFillLine(item.farmer?.address),
-    farmer_bank_name: toTextOrFillLine(item.farmer?.bank_name),
-    farmer_bank_account_number: toTextOrFillLine(item.farmer?.bank_account_number),
+    farmer_bank_name: toTextOrFillLine(
+      item.farmer_bank_name_snapshot ?? item.farmer?.bank_name,
+    ),
+    farmer_bank_account_number: toTextOrFillLine(
+      item.farmer_bank_account_number_snapshot ?? item.farmer?.bank_account_number,
+    ),
     farmer_bank_account_name: toTextOrFillLine(item.farmer?.bank_account_name),
     rice_type: toText(item.riceType?.name),
     weight_kg: formatNumber(item.weight_kg),
@@ -1102,28 +1388,211 @@ function buildContractTemplateData(item: SlipRow) {
   };
 }
 
-function buildDeliveryReceiptTemplateData(item: SlipRow) {
+function buildDeliveryReceiptTemplateData(item: SlipRow, contractNumber: string) {
   const purchaseDateParts = getDateParts(item.purchase_date);
-  const contractNumber = toText(item.authorizationLetter?.code);
 
   return {
-    receipt_no: buildDeliveryReceiptNumber(item),
+    receipt_no: contractNumber,
+    contract_no: contractNumber,
     receipt_location: toTextOrFillLine(item.farmer?.permanent_address),
     receipt_day: purchaseDateParts.day,
     receipt_month: purchaseDateParts.month,
     receipt_year: purchaseDateParts.year,
-    contract_no: contractNumber.length > 0 ? contractNumber : fillLine(),
     farmer_name: toTextOrFillLine(item.farmer?.name),
     farmer_citizen_id: toTextOrFillLine(item.farmer?.citizen_id),
     farmer_citizen_id_issued_date: formatDateOrFillLine(item.farmer?.citizen_id_issued_date),
     farmer_phone: toTextOrFillLine(item.farmer?.phone),
     farmer_permanent_address: toTextOrFillLine(item.farmer?.permanent_address),
-    farmer_bank_account_number: toTextOrFillLine(item.farmer?.bank_account_number),
-    farmer_bank_name: toTextOrFillLine(item.farmer?.bank_name),
+    farmer_bank_account_number: toTextOrFillLine(
+      item.farmer_bank_account_number_snapshot ?? item.farmer?.bank_account_number,
+    ),
+    farmer_bank_name: toTextOrFillLine(
+      item.farmer_bank_name_snapshot ?? item.farmer?.bank_name,
+    ),
     rice_type: toTextOrFillLine(item.riceType?.name),
     weight_kg: formatNumber(item.weight_kg),
     delivery_note: toTextOrFillLine(item.note),
   };
+}
+
+function buildAuthorizationLetterTemplateData(item: SlipRow) {
+  const purchaseDateParts = getDateParts(item.purchase_date);
+  const authorizedPerson = item.authorizedRecipient;
+  const legacyAuthorizedPerson = item.authorizedReceiverBroker;
+
+  return {
+    authorization_day: purchaseDateParts.day,
+    authorization_month: purchaseDateParts.month,
+    authorization_year: purchaseDateParts.year,
+    authorization_location: toTextOrFillLine(item.farmer?.permanent_address),
+    farmer_name: toTextOrFillLine(item.farmer?.name),
+    farmer_date_of_birth: formatDateOrFillLine(item.farmer?.date_of_birth),
+    farmer_citizen_id: toTextOrFillLine(item.farmer?.citizen_id),
+    farmer_citizen_id_issued_date: formatDateOrFillLine(item.farmer?.citizen_id_issued_date),
+    farmer_citizen_id_issued_place: fillLine(),
+    farmer_permanent_address: toTextOrFillLine(item.farmer?.permanent_address),
+    authorized_person_name: toTextOrFillLine(
+      item.authorized_person_name_snapshot ??
+        authorizedPerson?.name ??
+        legacyAuthorizedPerson?.name,
+    ),
+    authorized_person_date_of_birth: formatDateOrFillLine(authorizedPerson?.date_of_birth),
+    authorized_person_citizen_id: toTextOrFillLine(
+      item.authorized_person_citizen_id_snapshot ??
+        authorizedPerson?.citizen_id ??
+        legacyAuthorizedPerson?.citizen_id,
+    ),
+    authorized_person_citizen_id_issued_date: formatDateOrFillLine(
+      authorizedPerson?.citizen_id_issued_date,
+    ),
+    authorized_person_citizen_id_issued_place: toTextOrFillLine(
+      authorizedPerson?.citizen_id_issued_place,
+    ),
+    authorized_person_address: toTextOrFillLine(
+      item.authorized_person_address_snapshot ??
+        authorizedPerson?.address ??
+        legacyAuthorizedPerson?.address,
+    ),
+    authorized_person_bank_account_name: toTextOrFillLine(
+      authorizedPerson?.bank_account_name ??
+        item.authorized_person_name_snapshot ??
+        legacyAuthorizedPerson?.bank_account_name ??
+        legacyAuthorizedPerson?.name,
+    ),
+    authorized_person_bank_account_number: toTextOrFillLine(
+      item.authorized_person_bank_account_number_snapshot ??
+        authorizedPerson?.bank_account_number ??
+        legacyAuthorizedPerson?.bank_account_number,
+    ),
+    authorized_person_bank_name: toTextOrFillLine(
+      item.authorized_person_bank_name_snapshot ??
+        authorizedPerson?.bank_name ??
+        legacyAuthorizedPerson?.bank_name,
+    ),
+    rice_type: toTextOrFillLine(item.riceType?.name),
+    weight_kg: formatNumber(item.weight_kg),
+    total_amount: formatMoney(item.total_amount),
+    total_amount_words: moneyToVietnameseWords(item.total_amount),
+    payment_date: formatDate(item.purchase_date),
+  };
+}
+
+function hasAuthorizedPerson(item: SlipRow) {
+  return Boolean(
+    item.authorized_person_name_snapshot ||
+      item.authorizedRecipient ||
+      item.authorizedReceiverBroker,
+  );
+}
+
+function getAuthorizedPersonName(item: SlipRow) {
+  return (
+    item.authorized_person_name_snapshot ??
+    item.authorizedRecipient?.name ??
+    item.authorizedReceiverBroker?.name ??
+    ""
+  );
+}
+
+function formatContractNumber(sequence: number, purchaseDate: string) {
+  return `${String(sequence).padStart(3, "0")}/${purchaseDate.slice(0, 4)}-HĐMB/CLTV`;
+}
+
+type DossierTemplates = {
+  contract: ArrayBuffer;
+  deliveryReceipt: ArrayBuffer;
+  authorizationLetter: ArrayBuffer;
+};
+
+async function loadDossierTemplates(): Promise<DossierTemplates> {
+  const templatePaths = [
+    "/templates/purchase-contract-template.docx",
+    "/templates/delivery-receipt-template.docx",
+    "/templates/GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx",
+  ];
+  const responses = await Promise.all(templatePaths.map((templatePath) => fetch(templatePath)));
+  const failedTemplateIndex = responses.findIndex((response) => !response.ok);
+
+  if (failedTemplateIndex >= 0) {
+    throw new Error(`Không tìm thấy file mẫu tại ${templatePaths[failedTemplateIndex]}.`);
+  }
+
+  const [contract, deliveryReceipt, authorizationLetter] = await Promise.all(
+    responses.map((response) => response.arrayBuffer()),
+  );
+  return { contract, deliveryReceipt, authorizationLetter };
+}
+
+function renderDocxBytes(templateBuffer: ArrayBuffer, data: Record<string, unknown>) {
+  const doc = buildContractDoc(templateBuffer);
+  doc.render(data);
+  return doc.getZip().generate({
+    type: "uint8array",
+    compression: "DEFLATE",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+}
+
+async function buildDossierArchive(
+  dossierItems: SlipRow[],
+  templates: DossierTemplates,
+  contractNumbers: Map<string, string>,
+  onProgress?: (completed: number, total: number) => void,
+) {
+  const archive = new PizZip();
+
+  for (const [index, item] of dossierItems.entries()) {
+    const contractNumber =
+      contractNumbers.get(item.id) ??
+      formatContractNumber(item.contract_sequence ?? 1, item.purchase_date);
+    const folderName = buildDossierFolderName(item, contractNumber, index);
+
+    archive.file(
+      `${folderName}/01-hop-dong-mua-ban.docx`,
+      renderDocxBytes(templates.contract.slice(0), buildContractTemplateData(item, contractNumber)),
+    );
+    archive.file(
+      `${folderName}/02-bien-ban-giao-nhan.docx`,
+      renderDocxBytes(
+        templates.deliveryReceipt.slice(0),
+        buildDeliveryReceiptTemplateData(item, contractNumber),
+      ),
+    );
+    archive.file(
+      `${folderName}/03-giay-uy-quyen.docx`,
+      renderDocxBytes(
+        templates.authorizationLetter.slice(0),
+        buildAuthorizationLetterTemplateData(item),
+      ),
+    );
+
+    onProgress?.(index + 1, dossierItems.length);
+    if ((index + 1) % 10 === 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+
+  return archive.generate({
+    type: "blob",
+    compression: "DEFLATE",
+    mimeType: "application/zip",
+  });
+}
+
+function buildDossierFolderName(item: SlipRow, contractNumber: string, index: number) {
+  const order = String(item.source_row_number ?? index + 1).padStart(4, "0");
+  const farmerName = sanitizeFileName(item.farmer?.name || "nong-dan");
+  const safeContractNumber = sanitizeFileName(contractNumber.replaceAll("/", "-"));
+  return `${order}-${farmerName}-${safeContractNumber}`;
+}
+
+function formatDocumentGenerationError(error: unknown, fallback: string) {
+  const templateError = formatContractTemplateError(error);
+  return templateError === "Không thể tạo hợp đồng DOCX. Vui lòng kiểm tra lại file mẫu."
+    ? error instanceof Error
+      ? error.message
+      : fallback
+    : templateError;
 }
 
 function buildContractDoc(templateBuffer: ArrayBuffer) {
@@ -1214,9 +1683,9 @@ function buildDeliveryReceiptFileName(item: SlipRow) {
   return `bien-ban-giao-nhan-${farmerName}.docx`;
 }
 
-function buildDeliveryReceiptNumber(item: SlipRow) {
-  const datePart = (item.purchase_date ?? "").replaceAll("-", "") || "00000000";
-  return `BBGN-${datePart}-${item.id.slice(0, 6).toUpperCase()}`;
+function buildAuthorizationLetterFileName(item: SlipRow) {
+  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
+  return `giay-uy-quyen-${farmerName}.docx`;
 }
 
 function getDateParts(value: string | null | undefined) {

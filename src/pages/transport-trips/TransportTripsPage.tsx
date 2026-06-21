@@ -284,7 +284,7 @@ export function TransportTripsPage() {
       (purchaseSlipsResult.data ?? []).map((item) => ({
         ...item,
         farmer: farmerMap.get(item.farmer_id) ?? null,
-        broker: brokerMap.get(item.broker_id) ?? null,
+        broker: item.broker_id ? brokerMap.get(item.broker_id) ?? null : null,
         riceType: riceTypeMapRef.get(item.rice_type_id) ?? null,
       })),
     );

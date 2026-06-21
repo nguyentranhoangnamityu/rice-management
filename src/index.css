@@ -345,10 +345,13 @@ a {
 }
 
 .page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 24px;
+  width: 100%;
   max-width: 1280px;
   margin: 0 auto;
+  min-width: 0;
   animation: page-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -473,6 +476,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding-bottom: 4px;
 }
@@ -732,9 +736,42 @@ a {
    -------------------------------------------------------- */
 .table-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.bulk-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.bulk-progress {
+  margin-bottom: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+  color: var(--primary);
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.selection-column {
+  width: 48px;
+  min-width: 48px;
+  text-align: center;
+}
+
+.selection-column input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 .search-field {
@@ -2282,6 +2319,16 @@ a {
   }
 
   .search-field {
+    width: 100%;
+  }
+
+  .bulk-document-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-document-actions button {
     width: 100%;
   }
 

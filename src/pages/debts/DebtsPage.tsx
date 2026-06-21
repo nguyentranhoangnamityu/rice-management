@@ -144,6 +144,7 @@ export function DebtsPage() {
 
     const brokerDebtMap = new Map<string, BrokerDebtRow>();
     for (const item of filteredPurchaseSlips) {
+      if (!item.broker_id) continue;
       const broker = brokerMap.get(item.broker_id);
       const current = brokerDebtMap.get(item.broker_id) ?? {
         brokerId: item.broker_id,
