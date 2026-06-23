@@ -503,7 +503,9 @@ export type Database = {
           broker_commission_total: number;
           payment_status: Database["public"]["Enums"]["payment_status"];
           contract_sequence: number | null;
-          receipt_sequence: number;
+          receipt_sequence: number | null;
+          contract_no: string | null;
+          receipt_no: string | null;
           source_import_key: string | null;
           source_row_number: number | null;
           source_unit: string | null;
@@ -537,7 +539,9 @@ export type Database = {
           broker_commission_total?: number;
           payment_status?: Database["public"]["Enums"]["payment_status"];
           contract_sequence?: number | null;
-          receipt_sequence?: number;
+          receipt_sequence?: number | null;
+          contract_no?: string | null;
+          receipt_no?: string | null;
           source_import_key?: string | null;
           source_row_number?: number | null;
           source_unit?: string | null;

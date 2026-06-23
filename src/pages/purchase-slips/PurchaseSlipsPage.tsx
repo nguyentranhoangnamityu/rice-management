@@ -17,9 +17,8 @@ import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
 import type { QueryBuilder } from "../../lib/list-query";
 import {
-  formatContractCode,
-  formatReceiptCode,
   formatPurchaseDateVi,
+  extractLastAddressSegment,
   normalizePurchaseDate,
   toIsoDateInput,
 } from "../../lib/purchase-document-code";
@@ -60,6 +59,8 @@ const slipSchema = z.object({
   authorization_letter_id: z.string().optional(),
   authorized_receiver_broker_id: z.string().optional(),
   purchase_date: z.string().min(1, "Vui lòng chọn ngày mua"),
+  contract_no: z.string().trim().optional(),
+  receipt_no: z.string().trim().optional(),
   weight_kg: z.number().min(0, "Khối lượng không được âm"),
   unit_price: z.number().min(0, "Đơn giá không được âm"),
   broker_commission_per_kg: z.number().min(0, "Hoa hồng không được âm"),
@@ -78,6 +79,8 @@ const emptyValues: SlipFormValues = {
   authorization_letter_id: "",
   authorized_receiver_broker_id: "",
   purchase_date: new Date().toISOString().slice(0, 10),
+  contract_no: "",
+  receipt_no: "",
   weight_kg: 0,
   unit_price: 0,
   broker_commission_per_kg: 0,
@@ -447,6 +450,8 @@ export function PurchaseSlipsPage() {
       authorization_letter_id: item.authorization_letter_id ?? "",
       authorized_receiver_broker_id: item.authorized_receiver_broker_id ?? "",
       purchase_date: toIsoDateInput(item.purchase_date),
+      contract_no: item.contract_no ?? "",
+      receipt_no: item.receipt_no ?? "",
       weight_kg: item.weight_kg,
       unit_price: item.unit_price,
       broker_commission_per_kg: item.broker_commission_per_kg,
@@ -484,6 +489,8 @@ export function PurchaseSlipsPage() {
       authorization_letter_id: values.authorization_letter_id || null,
       authorized_receiver_broker_id: values.authorized_receiver_broker_id || null,
       purchase_date: values.purchase_date,
+      contract_no: toNullable(values.contract_no),
+      receipt_no: toNullable(values.receipt_no),
       weight_kg: values.weight_kg,
       unit_price: values.unit_price,
       total_amount: round2(values.weight_kg * values.unit_price),
@@ -543,7 +550,7 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
-      const contractNumbers = await getDocumentNumbers(item);
+      const contractNumbers = getDocumentNumbers(item);
       doc.render(buildContractTemplateData(item, contractNumbers.contractNo));
 
       const blob = doc.getZip().generate({
@@ -571,7 +578,7 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
-      const documentNumbers = await getDocumentNumbers(item);
+      const documentNumbers = getDocumentNumbers(item);
       doc.render(buildDeliveryReceiptTemplateData(item, documentNumbers));
 
       const blob = doc.getZip().generate({
@@ -631,7 +638,7 @@ export function PurchaseSlipsPage() {
 
     try {
       const templates = await loadDossierTemplates();
-      const documentNumbers = await getDocumentNumbers(item);
+      const documentNumbers = getDocumentNumbers(item);
       const archive = await buildDossierArchive(
         [item],
         templates,
@@ -692,7 +699,7 @@ export function PurchaseSlipsPage() {
 
       const [templates, documentNumbers] = await Promise.all([
         loadDossierTemplates(),
-        resolveDocumentNumbers(dossierItems),
+        Promise.resolve(resolveDocumentNumbers(dossierItems)),
       ]);
       const archive = await buildDossierArchive(
         dossierItems,
@@ -718,58 +725,18 @@ export function PurchaseSlipsPage() {
     }
   }
 
-  async function resolveDocumentNumbers(dossierItems: SlipRow[]) {
+  function resolveDocumentNumbers(dossierItems: SlipRow[]) {
     const numbers = new Map<string, DocumentNumbers>();
-    const needsSeqByDate = new Map<string, SlipRow[]>();
-    const dailySeqBySlipId = new Map<string, number>();
 
     for (const item of dossierItems) {
-      if (item.receipt_sequence) {
-        dailySeqBySlipId.set(item.id, item.receipt_sequence);
-        continue;
-      }
-
-      const dateKey = toIsoDateInput(item.purchase_date);
-      const dateItems = needsSeqByDate.get(dateKey) ?? [];
-      dateItems.push(item);
-      needsSeqByDate.set(dateKey, dateItems);
-    }
-
-    for (const purchaseDate of needsSeqByDate.keys()) {
-      const { data, error: sequenceError } = await supabase
-        .from("purchase_slips")
-        .select("id,purchase_date,created_at")
-        .eq("purchase_date", purchaseDate)
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true });
-      if (sequenceError) throw sequenceError;
-
-      for (const [index, slip] of (data ?? []).entries()) {
-        dailySeqBySlipId.set(slip.id, index + 1);
-      }
-    }
-
-    for (const item of dossierItems) {
-      numbers.set(
-        item.id,
-        buildDocumentNumbers(dailySeqBySlipId.get(item.id) ?? 1, item.purchase_date),
-      );
+      numbers.set(item.id, getDocumentNumbersFromSlip(item));
     }
 
     return numbers;
   }
 
-  async function getDocumentNumbers(item: SlipRow): Promise<DocumentNumbers> {
-    if (item.receipt_sequence) {
-      return buildDocumentNumbers(item.receipt_sequence, item.purchase_date);
-    }
-
-    const resolved = await resolveDocumentNumbers([item]);
-    const numbers = resolved.get(item.id);
-    if (!numbers) {
-      throw new Error("Không thể tính số hợp đồng và biên bản giao nhận.");
-    }
-    return numbers;
+  function getDocumentNumbers(item: SlipRow): DocumentNumbers {
+    return getDocumentNumbersFromSlip(item);
   }
 
   return (
@@ -815,6 +782,14 @@ export function PurchaseSlipsPage() {
               <span>Ngày mua</span>
               <input type="date" {...register("purchase_date")} />
               {errors.purchase_date ? <small>{errors.purchase_date.message}</small> : null}
+            </label>
+            <label className="field">
+              <span>Số hợp đồng</span>
+              <input type="text" {...register("contract_no")} placeholder="VD: 0012026-HĐMB/CLTV" />
+            </label>
+            <label className="field">
+              <span>Số biên bản</span>
+              <input type="text" {...register("receipt_no")} placeholder="VD: 0012026" />
             </label>
             <label className="field">
               <span>Mùa vụ</span>
@@ -1093,8 +1068,8 @@ export function PurchaseSlipsPage() {
                       <td>{formatPurchaseDateVi(item.purchase_date)}</td>
                       <td>
                         {listView === "contracts"
-                          ? formatContractCode(item.receipt_sequence, item.purchase_date)
-                          : formatReceiptCode(item.receipt_sequence, item.purchase_date)}
+                          ? item.contract_no || "-"
+                          : item.receipt_no || "-"}
                       </td>
                       <td>{item.farmer?.name || "-"}</td>
                       <td>
@@ -1515,15 +1490,13 @@ function buildContractTemplateData(item: SlipRow, contractNumber: string) {
 
 function buildDeliveryReceiptTemplateData(item: SlipRow, documentNumbers: DocumentNumbers) {
   const purchaseDateParts = getDateParts(item.purchase_date);
-  const farmerAddress = toTextOrFillLine(
-    item.farmer?.permanent_address ?? item.farmer?.address,
-  );
+  const farmerFullAddress = item.farmer?.permanent_address ?? item.farmer?.address;
 
   return {
     receipt_no: documentNumbers.receiptNo,
     contract_no: documentNumbers.contractNo,
-    location: farmerAddress,
-    receipt_location: farmerAddress,
+    location: toTextOrFillLine(extractLastAddressSegment(farmerFullAddress)),
+    receipt_location: toTextOrFillLine(farmerFullAddress),
     receipt_day: purchaseDateParts.day,
     receipt_month: purchaseDateParts.month,
     receipt_year: purchaseDateParts.year,
@@ -1628,11 +1601,16 @@ type DocumentNumbers = {
   receiptNo: string;
 };
 
-function buildDocumentNumbers(dailySequence: number, purchaseDate: string): DocumentNumbers {
-  return {
-    contractNo: formatContractCode(dailySequence, purchaseDate),
-    receiptNo: formatReceiptCode(dailySequence, purchaseDate),
-  };
+function getDocumentNumbersFromSlip(item: SlipRow): DocumentNumbers {
+  const contractNo = item.contract_no?.trim() ?? "";
+  const receiptNo = item.receipt_no?.trim() ?? "";
+
+  if (!contractNo || !receiptNo) {
+    const farmerName = item.farmer?.name ?? "nông dân";
+    throw new Error(`Phiếu mua của ${farmerName} chưa có số hợp đồng hoặc số biên bản.`);
+  }
+
+  return { contractNo, receiptNo };
 }
 
 type DossierTemplates = {
@@ -1680,8 +1658,7 @@ async function buildDossierArchive(
 
   for (const [index, item] of dossierItems.entries()) {
     const documentNumbers =
-      documentNumbersBySlipId.get(item.id) ??
-      buildDocumentNumbers(item.receipt_sequence ?? 1, item.purchase_date);
+      documentNumbersBySlipId.get(item.id) ?? getDocumentNumbersFromSlip(item);
     const folderName = buildDossierFolderName(item, documentNumbers.contractNo, index);
 
     archive.file(

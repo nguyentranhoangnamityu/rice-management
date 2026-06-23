@@ -11,7 +11,7 @@ const outputPath = path.join(
   rootDir,
   "supabase",
   "migrations",
-  "202606210002_import_excel_purchase_data.sql",
+  "202606240002_reimport_excel_purchase_data.sql",
 );
 
 const citizenIdOverrides = new Map([
@@ -52,17 +52,23 @@ const [headers, ...rawRows] = XLSX.utils.sheet_to_json(sheet, {
   raw: false,
 });
 const rows = rawRows.filter((row) => row.some((value) => text(value).length > 0));
-const farmerSequences = new Map();
 
 const payload = rows.map((row, index) => {
   const source = Object.fromEntries(headers.map((header, column) => [header, row[column]]));
+  const contractNo = text(source["SỐ HỢP ĐỒNG"]);
+  const receiptNo = text(source["SỐ BIÊN BẢN"]);
   const farmerName = text(source["TÊN NÔNG DÂN"]);
   const sourceFarmerCitizenId = text(source["CCCD NÔNG DÂN"]);
   const farmerCitizenId =
     citizenIdOverrides.get(normalizeName(farmerName)) ?? sourceFarmerCitizenId;
   const farmerIdentityKey = `farmer:${farmerCitizenId || keyPart(farmerName)}`;
-  const contractSequence = (farmerSequences.get(farmerIdentityKey) ?? 0) + 1;
-  farmerSequences.set(farmerIdentityKey, contractSequence);
+
+  if (!contractNo) {
+    throw new Error(`Thiếu SỐ HỢP ĐỒNG tại dòng ${index + 2}`);
+  }
+  if (!receiptNo) {
+    throw new Error(`Thiếu SỐ BIÊN BẢN tại dòng ${index + 2}`);
+  }
 
   const authorizedName = text(source["TÊN NGƯỜI ĐƯỢC ỦY QUYỀN"]);
   const authorizedCitizenId = text(source["CCCD NGƯỜI ĐƯỢC ỦY QUYỀN"]);
@@ -88,7 +94,8 @@ const payload = rows.map((row, index) => {
     source_row_number: index + 2,
     source_import_key: `excel-2026-${index + 2}-${fingerprint}`,
     purchase_date: purchaseDate,
-    contract_sequence: contractSequence,
+    contract_no: contractNo,
+    receipt_no: receiptNo,
     farmer_identity_key: farmerIdentityKey,
     farmer_name: farmerName,
     farmer_citizen_id: farmerCitizenId,
@@ -273,7 +280,8 @@ begin
       unit_price,
       total_amount,
       payment_status,
-      contract_sequence,
+      contract_no,
+      receipt_no,
       source_import_key,
       source_row_number,
       source_unit,
@@ -298,7 +306,8 @@ begin
       (item->>'unit_price')::numeric,
       (item->>'total_amount')::numeric,
       'unpaid',
-      (item->>'contract_sequence')::integer,
+      item->>'contract_no',
+      item->>'receipt_no',
       item->>'source_import_key',
       (item->>'source_row_number')::integer,
       item->>'source_unit',
@@ -321,7 +330,8 @@ begin
       weight_kg = excluded.weight_kg,
       unit_price = excluded.unit_price,
       total_amount = excluded.total_amount,
-      contract_sequence = excluded.contract_sequence,
+      contract_no = excluded.contract_no,
+      receipt_no = excluded.receipt_no,
       source_row_number = excluded.source_row_number,
       source_unit = excluded.source_unit,
       farmer_bank_account_number_snapshot = excluded.farmer_bank_account_number_snapshot,

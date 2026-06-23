@@ -126,22 +126,18 @@ const [headers, ...rows] = XLSX.utils.sheet_to_json(sheet, {
   raw: false,
 });
 const sourceRows = rows.filter((row) => row.some((value) => value !== "")).slice(0, 2);
-const dailySequences = new Map();
 
 await fs.mkdir(outputDir, { recursive: true });
 
 for (const [index, row] of sourceRows.entries()) {
   const source = Object.fromEntries(headers.map((header, column) => [header, row[column]]));
   const date = parseDate(source["NGÀY"]);
-  const dateKey = date.iso;
-  const dailySequence = (dailySequences.get(dateKey) ?? 0) + 1;
-  dailySequences.set(dateKey, dailySequence);
-  const documentCode = `${date.year}${date.day}${date.month}${String(dailySequence).padStart(2, "0")}`;
   const farmerName = String(source["TÊN NÔNG DÂN"]).trim();
   const citizenId =
     citizenIdOverrides.get(normalizeName(farmerName)) ?? String(source["CCCD NÔNG DÂN"]).trim();
-  const contractNo = `${documentCode}-HĐMB/CLTV`;
-  const receiptNo = documentCode;
+  const contractNo = String(source["SỐ HỢP ĐỒNG"]).trim();
+  const receiptNo = String(source["SỐ BIÊN BẢN"]).trim();
+  const farmerAddress = String(source["ĐỊA CHỈ NÔNG DÂN"]).trim();
   const weight = parseNumber(source["KHỐI LƯỢNG"]);
   const unitPrice = parseNumber(source["ĐƠN GIÁ"]);
   const totalAmount = parseNumber(source["THÀNH TIỀN"]);
@@ -155,8 +151,12 @@ for (const [index, row] of sourceRows.entries()) {
     receipt_day: date.day,
     receipt_month: date.month,
     receipt_year: date.year,
-    receipt_location: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
-    location: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
+    receipt_location: farmerAddress,
+    location: farmerAddress
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .at(-1) ?? "",
     farmer_name: farmerName,
     farmer_permanent_address: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
     farmer_citizen_id: citizenId,

@@ -37,21 +37,15 @@ export function formatPurchaseDateVi(value: string | null | undefined): string {
   return `${parts.day}/${parts.month}/${parts.year}`;
 }
 
-/** Mã chứng từ: YYYY + DD + MM + STT trong ngày (2 chữ số). Ví dụ: 2026230601 */
-export function formatDocumentCode(dailySequence: number, purchaseDate: string): string {
-  const parts = normalizePurchaseDate(purchaseDate);
-  if (!parts) return "";
+/** Lấy phần địa chỉ cuối sau dấu phẩy. VD: "..., Kiên Giang" → "Kiên Giang" */
+export function extractLastAddressSegment(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
 
-  return `${parts.year}${parts.day}${parts.month}${String(dailySequence).padStart(2, "0")}`;
-}
+  const parts = trimmed
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 
-export const CONTRACT_CODE_SUFFIX = "-HĐMB/CLTV";
-
-export function formatContractCode(dailySequence: number, purchaseDate: string): string {
-  const code = formatDocumentCode(dailySequence, purchaseDate);
-  return code ? `${code}${CONTRACT_CODE_SUFFIX}` : "";
-}
-
-export function formatReceiptCode(dailySequence: number, purchaseDate: string): string {
-  return formatDocumentCode(dailySequence, purchaseDate);
+  return parts.at(-1) ?? trimmed;
 }
