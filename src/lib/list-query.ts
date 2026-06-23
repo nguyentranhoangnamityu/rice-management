@@ -52,7 +52,7 @@ export async function fetchPaginatedList<T>(
   }
 
   const { data, error, count } = await query
-    .order(config.orderColumn, { ascending: false })
+    .order(config.orderColumn, { ascending: config.ascending ?? false })
     .range(from, to);
 
   if (error) {

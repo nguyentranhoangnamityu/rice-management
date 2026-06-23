@@ -15,6 +15,14 @@ import type { PurchaseSlipNavigationState } from "../../lib/purchase-slip-naviga
 import { supabase } from "../../lib/supabase";
 import type { Enums, Tables } from "../../types/database";
 import { formatDbError } from "../../lib/db-errors";
+import type { QueryBuilder } from "../../lib/list-query";
+import {
+  formatContractCode,
+  formatReceiptCode,
+  formatPurchaseDateVi,
+  normalizePurchaseDate,
+  toIsoDateInput,
+} from "../../lib/purchase-document-code";
 
 type PurchaseSlip = Tables<"purchase_slips">;
 type Season = Tables<"seasons">;
@@ -106,11 +114,44 @@ const slipQueryOptions = {
   },
 };
 
+type SlipListView = "contracts" | "delivery-receipts";
+
 export function PurchaseSlipsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const pendingFarmerDraftRef = useRef<PurchaseSlipNavigationState | null>(null);
   const [prefillFarmerName, setPrefillFarmerName] = useState<string | null>(null);
+  const [listView, setListView] = useState<SlipListView>("contracts");
+  const [contractDateFrom, setContractDateFrom] = useState("");
+  const [contractDateTo, setContractDateTo] = useState("");
+  const [receiptDateFrom, setReceiptDateFrom] = useState("");
+  const [receiptDateTo, setReceiptDateTo] = useState("");
+
+  const applyDateFilter = useCallback(
+    (query: QueryBuilder) => {
+      const from = listView === "contracts" ? contractDateFrom : receiptDateFrom;
+      const to = listView === "contracts" ? contractDateTo : receiptDateTo;
+
+      if (from) {
+        query = query.gte("purchase_date", from);
+      }
+      if (to) {
+        query = query.lte("purchase_date", to);
+      }
+
+      return query;
+    },
+    [listView, contractDateFrom, contractDateTo, receiptDateFrom, receiptDateTo],
+  );
+
+  const queryOptions = useMemo(
+    () => ({
+      resolveSearchFilter: slipQueryOptions.resolveSearchFilter,
+      applyFilter: applyDateFilter,
+    }),
+    [applyDateFilter],
+  );
+
   const {
     items: slipRows,
     page,
@@ -122,7 +163,7 @@ export function PurchaseSlipsPage() {
     loading,
     error: listError,
     refresh,
-  } = useServerPagination<PurchaseSlip>("purchase_slips", { queryOptions: slipQueryOptions });
+  } = useServerPagination<PurchaseSlip>("purchase_slips", { queryOptions });
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
@@ -144,6 +185,39 @@ export function PurchaseSlipsPage() {
   const [editingItem, setEditingItem] = useState<SlipRow | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [actionMenu, setActionMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+
+  const activeDateFrom = listView === "contracts" ? contractDateFrom : receiptDateFrom;
+  const activeDateTo = listView === "contracts" ? contractDateTo : receiptDateTo;
+
+  useEffect(() => {
+    setPage(1);
+  }, [listView, contractDateFrom, contractDateTo, receiptDateFrom, receiptDateTo, setPage]);
+
+  const setActiveDateFrom = (value: string) => {
+    if (listView === "contracts") {
+      setContractDateFrom(value);
+    } else {
+      setReceiptDateFrom(value);
+    }
+  };
+
+  const setActiveDateTo = (value: string) => {
+    if (listView === "contracts") {
+      setContractDateTo(value);
+    } else {
+      setReceiptDateTo(value);
+    }
+  };
+
+  const clearActiveDateFilter = () => {
+    if (listView === "contracts") {
+      setContractDateFrom("");
+      setContractDateTo("");
+    } else {
+      setReceiptDateFrom("");
+      setReceiptDateTo("");
+    }
+  };
 
   const {
     formState: { errors },
@@ -372,7 +446,7 @@ export function PurchaseSlipsPage() {
       rice_type_id: item.rice_type_id,
       authorization_letter_id: item.authorization_letter_id ?? "",
       authorized_receiver_broker_id: item.authorized_receiver_broker_id ?? "",
-      purchase_date: item.purchase_date,
+      purchase_date: toIsoDateInput(item.purchase_date),
       weight_kg: item.weight_kg,
       unit_price: item.unit_price,
       broker_commission_per_kg: item.broker_commission_per_kg,
@@ -434,7 +508,9 @@ export function PurchaseSlipsPage() {
   }
 
   async function deleteItem(item: SlipRow) {
-    const confirmed = window.confirm(`Xóa phiếu mua ngày ${formatDate(item.purchase_date)}?`);
+    const confirmed = window.confirm(
+      `Xóa phiếu mua ngày ${formatPurchaseDateVi(item.purchase_date)}?`,
+    );
     if (!confirmed) return;
 
     setDeletingId(item.id);
@@ -467,9 +543,8 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
-      const contractNumber = await getContractNumber(item);
-
-      doc.render(buildContractTemplateData(item, contractNumber));
+      const contractNumbers = await getDocumentNumbers(item);
+      doc.render(buildContractTemplateData(item, contractNumbers.contractNo));
 
       const blob = doc.getZip().generate({
         type: "blob",
@@ -496,8 +571,8 @@ export function PurchaseSlipsPage() {
 
       const templateBuffer = await response.arrayBuffer();
       const doc = buildContractDoc(templateBuffer);
-      const contractNumber = await getContractNumber(item);
-      doc.render(buildDeliveryReceiptTemplateData(item, contractNumber));
+      const documentNumbers = await getDocumentNumbers(item);
+      doc.render(buildDeliveryReceiptTemplateData(item, documentNumbers));
 
       const blob = doc.getZip().generate({
         type: "blob",
@@ -556,8 +631,12 @@ export function PurchaseSlipsPage() {
 
     try {
       const templates = await loadDossierTemplates();
-      const contractNumber = await getContractNumber(item);
-      const archive = await buildDossierArchive([item], templates, new Map([[item.id, contractNumber]]));
+      const documentNumbers = await getDocumentNumbers(item);
+      const archive = await buildDossierArchive(
+        [item],
+        templates,
+        new Map([[item.id, documentNumbers]]),
+      );
       saveAs(archive, `bo-ho-so-${sanitizeFileName(item.farmer?.name || "nong-dan")}.zip`);
     } catch (currentError) {
       setError(formatDocumentGenerationError(currentError, "Không thể tạo bộ hồ sơ."));
@@ -594,11 +673,13 @@ export function PurchaseSlipsPage() {
     setError(null);
 
     try {
-      const query = supabase
-        .from("purchase_slips")
-        .select("*")
-        .order("purchase_date", { ascending: true })
-        .order("created_at", { ascending: true });
+      const query = applyDateFilter(
+        supabase
+          .from("purchase_slips")
+          .select("*")
+          .order("purchase_date", { ascending: true })
+          .order("created_at", { ascending: true }),
+      );
       const result =
         mode === "selected"
           ? await query.in("id", selectedSlipIds)
@@ -609,14 +690,14 @@ export function PurchaseSlipsPage() {
       const dossierItems = (result.data ?? []).map(hydrateSlip);
       if (dossierItems.length === 0) throw new Error("Không có phiếu mua để tạo hồ sơ.");
 
-      const [templates, contractNumbers] = await Promise.all([
+      const [templates, documentNumbers] = await Promise.all([
         loadDossierTemplates(),
-        resolveContractNumbers(dossierItems),
+        resolveDocumentNumbers(dossierItems),
       ]);
       const archive = await buildDossierArchive(
         dossierItems,
         templates,
-        contractNumbers,
+        documentNumbers,
         (completed, totalItems) => {
           setBulkProgress(`Đang tạo ${completed}/${totalItems} bộ hồ sơ...`);
         },
@@ -637,62 +718,58 @@ export function PurchaseSlipsPage() {
     }
   }
 
-  async function resolveContractNumbers(dossierItems: SlipRow[]) {
-    const numbers = new Map<string, string>();
-    const missingByFarmer = new Map<string, SlipRow[]>();
+  async function resolveDocumentNumbers(dossierItems: SlipRow[]) {
+    const numbers = new Map<string, DocumentNumbers>();
+    const needsSeqByDate = new Map<string, SlipRow[]>();
+    const dailySeqBySlipId = new Map<string, number>();
 
     for (const item of dossierItems) {
-      if (item.contract_sequence) {
-        numbers.set(item.id, formatContractNumber(item.contract_sequence, item.purchase_date));
-      } else {
-        const farmerItems = missingByFarmer.get(item.farmer_id) ?? [];
-        farmerItems.push(item);
-        missingByFarmer.set(item.farmer_id, farmerItems);
+      if (item.receipt_sequence) {
+        dailySeqBySlipId.set(item.id, item.receipt_sequence);
+        continue;
       }
+
+      const dateKey = toIsoDateInput(item.purchase_date);
+      const dateItems = needsSeqByDate.get(dateKey) ?? [];
+      dateItems.push(item);
+      needsSeqByDate.set(dateKey, dateItems);
     }
 
-    for (const [farmerId, farmerItems] of missingByFarmer) {
+    for (const purchaseDate of needsSeqByDate.keys()) {
       const { data, error: sequenceError } = await supabase
         .from("purchase_slips")
         .select("id,purchase_date,created_at")
-        .eq("farmer_id", farmerId)
-        .order("purchase_date", { ascending: true })
+        .eq("purchase_date", purchaseDate)
         .order("created_at", { ascending: true })
         .order("id", { ascending: true });
       if (sequenceError) throw sequenceError;
 
-      const sequenceMap = new Map((data ?? []).map((slip, index) => [slip.id, index + 1]));
-      for (const item of farmerItems) {
-        numbers.set(
-          item.id,
-          formatContractNumber(sequenceMap.get(item.id) ?? 1, item.purchase_date),
-        );
+      for (const [index, slip] of (data ?? []).entries()) {
+        dailySeqBySlipId.set(slip.id, index + 1);
       }
+    }
+
+    for (const item of dossierItems) {
+      numbers.set(
+        item.id,
+        buildDocumentNumbers(dailySeqBySlipId.get(item.id) ?? 1, item.purchase_date),
+      );
     }
 
     return numbers;
   }
 
-  async function getContractNumber(item: SlipRow) {
-    if (item.contract_sequence) {
-      return formatContractNumber(item.contract_sequence, item.purchase_date);
+  async function getDocumentNumbers(item: SlipRow): Promise<DocumentNumbers> {
+    if (item.receipt_sequence) {
+      return buildDocumentNumbers(item.receipt_sequence, item.purchase_date);
     }
 
-    const { data, error: contractNumberError } = await supabase
-      .from("purchase_slips")
-      .select("id,purchase_date,created_at")
-      .eq("farmer_id", item.farmer_id)
-      .order("purchase_date", { ascending: true })
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true });
-
-    if (contractNumberError) throw contractNumberError;
-
-    const ordinal = Math.max(
-      1,
-      (data ?? []).findIndex((slip) => slip.id === item.id) + 1,
-    );
-    return formatContractNumber(ordinal, item.purchase_date);
+    const resolved = await resolveDocumentNumbers([item]);
+    const numbers = resolved.get(item.id);
+    if (!numbers) {
+      throw new Error("Không thể tính số hợp đồng và biên bản giao nhận.");
+    }
+    return numbers;
   }
 
   return (
@@ -887,15 +964,63 @@ export function PurchaseSlipsPage() {
         ) : null}
 
         <div className="table-card">
+          <div className="slip-list-tabs" role="tablist" aria-label="Loại chứng từ">
+            <button
+              className={`slip-list-tab${listView === "contracts" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={listView === "contracts"}
+              onClick={() => setListView("contracts")}
+            >
+              Phiếu mua / Hợp đồng
+            </button>
+            <button
+              className={`slip-list-tab${listView === "delivery-receipts" ? " active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={listView === "delivery-receipts"}
+              onClick={() => setListView("delivery-receipts")}
+            >
+              Biên bản giao nhận
+            </button>
+          </div>
+
           <div className="table-toolbar">
-            <label className="search-field">
-              <Search size={17} aria-hidden="true" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm theo nông dân, cò, chuyến hàng, loại lúa"
-              />
-            </label>
+            <div className="table-toolbar-filters">
+              <label className="search-field">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Tìm theo nông dân, cò, chuyến hàng, loại lúa"
+                />
+              </label>
+              <div className="date-range-filter">
+                <label className="date-filter-field">
+                  <span>
+                    {listView === "contracts" ? "Ngày HĐ từ" : "Ngày BBGN từ"}
+                  </span>
+                  <input
+                    type="date"
+                    value={activeDateFrom}
+                    onChange={(event) => setActiveDateFrom(event.target.value)}
+                  />
+                </label>
+                <label className="date-filter-field">
+                  <span>Đến</span>
+                  <input
+                    type="date"
+                    value={activeDateTo}
+                    onChange={(event) => setActiveDateTo(event.target.value)}
+                  />
+                </label>
+                {activeDateFrom || activeDateTo ? (
+                  <button className="secondary-button compact-action-button" type="button" onClick={clearActiveDateFilter}>
+                    Xóa lọc ngày
+                  </button>
+                ) : null}
+              </div>
+            </div>
             <div className="bulk-document-actions">
               <button
                 className="secondary-button"
@@ -942,6 +1067,7 @@ export function PurchaseSlipsPage() {
                       />
                     </th>
                     <th>Ngày</th>
+                    <th>{listView === "contracts" ? "Mã hợp đồng" : "Mã biên bản"}</th>
                     <th>Nông dân</th>
                     <th>Cò lúa</th>
                     <th>Chuyến hàng</th>
@@ -964,7 +1090,12 @@ export function PurchaseSlipsPage() {
                           aria-label={`Chọn hồ sơ của ${item.farmer?.name ?? "nông dân"}`}
                         />
                       </td>
-                      <td>{formatDate(item.purchase_date)}</td>
+                      <td>{formatPurchaseDateVi(item.purchase_date)}</td>
+                      <td>
+                        {listView === "contracts"
+                          ? formatContractCode(item.receipt_sequence, item.purchase_date)
+                          : formatReceiptCode(item.receipt_sequence, item.purchase_date)}
+                      </td>
                       <td>{item.farmer?.name || "-"}</td>
                       <td>
                         <div>{item.broker?.name || "-"}</div>
@@ -1218,7 +1349,7 @@ function formatAuthorizationLetter(letter: AuthorizationLetter, farmers: Farmer[
   const broker = letter.broker_id
     ? brokers.find((item) => item.id === letter.broker_id)
     : null;
-  const date = letter.signed_date ? ` - ${formatDate(letter.signed_date)}` : "";
+  const date = letter.signed_date ? ` - ${formatPurchaseDateVi(letter.signed_date)}` : "";
   return `${farmer?.name ?? "Nông dân"} / ${broker?.name ?? "Cò lúa"}${date}`;
 }
 
@@ -1317,12 +1448,6 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short" }).format(
-    new Date(`${value}T00:00:00`),
-  );
-}
-
 function formatNumber(value: number) {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(value);
 }
@@ -1388,13 +1513,17 @@ function buildContractTemplateData(item: SlipRow, contractNumber: string) {
   };
 }
 
-function buildDeliveryReceiptTemplateData(item: SlipRow, contractNumber: string) {
+function buildDeliveryReceiptTemplateData(item: SlipRow, documentNumbers: DocumentNumbers) {
   const purchaseDateParts = getDateParts(item.purchase_date);
+  const farmerAddress = toTextOrFillLine(
+    item.farmer?.permanent_address ?? item.farmer?.address,
+  );
 
   return {
-    receipt_no: contractNumber,
-    contract_no: contractNumber,
-    receipt_location: toTextOrFillLine(item.farmer?.permanent_address),
+    receipt_no: documentNumbers.receiptNo,
+    contract_no: documentNumbers.contractNo,
+    location: farmerAddress,
+    receipt_location: farmerAddress,
     receipt_day: purchaseDateParts.day,
     receipt_month: purchaseDateParts.month,
     receipt_year: purchaseDateParts.year,
@@ -1473,7 +1602,7 @@ function buildAuthorizationLetterTemplateData(item: SlipRow) {
     weight_kg: formatNumber(item.weight_kg),
     total_amount: formatMoney(item.total_amount),
     total_amount_words: moneyToVietnameseWords(item.total_amount),
-    payment_date: formatDate(item.purchase_date),
+    payment_date: formatPurchaseDateVi(item.purchase_date),
   };
 }
 
@@ -1494,8 +1623,16 @@ function getAuthorizedPersonName(item: SlipRow) {
   );
 }
 
-function formatContractNumber(sequence: number, purchaseDate: string) {
-  return `${String(sequence).padStart(3, "0")}/${purchaseDate.slice(0, 4)}-HĐMB/CLTV`;
+type DocumentNumbers = {
+  contractNo: string;
+  receiptNo: string;
+};
+
+function buildDocumentNumbers(dailySequence: number, purchaseDate: string): DocumentNumbers {
+  return {
+    contractNo: formatContractCode(dailySequence, purchaseDate),
+    receiptNo: formatReceiptCode(dailySequence, purchaseDate),
+  };
 }
 
 type DossierTemplates = {
@@ -1536,26 +1673,29 @@ function renderDocxBytes(templateBuffer: ArrayBuffer, data: Record<string, unkno
 async function buildDossierArchive(
   dossierItems: SlipRow[],
   templates: DossierTemplates,
-  contractNumbers: Map<string, string>,
+  documentNumbersBySlipId: Map<string, DocumentNumbers>,
   onProgress?: (completed: number, total: number) => void,
 ) {
   const archive = new PizZip();
 
   for (const [index, item] of dossierItems.entries()) {
-    const contractNumber =
-      contractNumbers.get(item.id) ??
-      formatContractNumber(item.contract_sequence ?? 1, item.purchase_date);
-    const folderName = buildDossierFolderName(item, contractNumber, index);
+    const documentNumbers =
+      documentNumbersBySlipId.get(item.id) ??
+      buildDocumentNumbers(item.receipt_sequence ?? 1, item.purchase_date);
+    const folderName = buildDossierFolderName(item, documentNumbers.contractNo, index);
 
     archive.file(
       `${folderName}/01-hop-dong-mua-ban.docx`,
-      renderDocxBytes(templates.contract.slice(0), buildContractTemplateData(item, contractNumber)),
+      renderDocxBytes(
+        templates.contract.slice(0),
+        buildContractTemplateData(item, documentNumbers.contractNo),
+      ),
     );
     archive.file(
       `${folderName}/02-bien-ban-giao-nhan.docx`,
       renderDocxBytes(
         templates.deliveryReceipt.slice(0),
-        buildDeliveryReceiptTemplateData(item, contractNumber),
+        buildDeliveryReceiptTemplateData(item, documentNumbers),
       ),
     );
     archive.file(
@@ -1646,7 +1786,7 @@ function formatContractTemplateError(error: unknown) {
 
 function formatDateOrEmpty(value: string | null | undefined) {
   if (!value) return "";
-  return formatDate(value);
+  return formatPurchaseDateVi(value);
 }
 
 function toText(value: string | null | undefined) {
@@ -1655,7 +1795,7 @@ function toText(value: string | null | undefined) {
 
 function formatDateOrFillLine(value: string | null | undefined) {
   if (!value) return fillLine();
-  return formatDate(value);
+  return formatPurchaseDateVi(value);
 }
 
 function toTextOrFillLine(value: string | null | undefined) {
@@ -1689,7 +1829,8 @@ function buildAuthorizationLetterFileName(item: SlipRow) {
 }
 
 function getDateParts(value: string | null | undefined) {
-  if (!value) {
+  const parts = normalizePurchaseDate(value);
+  if (!parts) {
     return {
       day: fillLine(),
       month: fillLine(),
@@ -1697,11 +1838,10 @@ function getDateParts(value: string | null | undefined) {
     };
   }
 
-  const [year = "", month = "", day = ""] = value.split("-");
   return {
-    day: day || fillLine(),
-    month: month || fillLine(),
-    year: year || fillLine(),
+    day: parts.day,
+    month: parts.month,
+    year: parts.year,
   };
 }
 

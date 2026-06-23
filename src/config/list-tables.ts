@@ -20,11 +20,12 @@ export type ListTableKey =
 type ListTableConfig = {
   orderColumn: string;
   searchColumns: string[];
+  ascending?: boolean;
 };
 
 export const listTableConfig: Record<ListTableKey, ListTableConfig> = {
   app_users: { orderColumn: "created_at", searchColumns: ["full_name", "email", "phone", "note"] },
-  farmers: { orderColumn: "created_at", searchColumns: ["name", "phone", "citizen_id"] },
+  farmers: { orderColumn: "stt", searchColumns: ["name", "phone", "citizen_id"], ascending: true },
   brokers: { orderColumn: "created_at", searchColumns: ["name", "phone", "citizen_id"] },
   rice_types: { orderColumn: "created_at", searchColumns: ["name", "note"] },
   seasons: { orderColumn: "created_at", searchColumns: ["name", "note"] },

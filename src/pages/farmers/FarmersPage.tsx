@@ -551,7 +551,9 @@ export function FarmersPage() {
                 {items.map((item) => (
                   <article key={`mobile-${item.id}`} className="farmer-mobile-card">
                     <div className="farmer-mobile-body">
-                      <strong className="farmer-mobile-name">{item.name}</strong>
+                      <strong className="farmer-mobile-name">
+                        <span className="farmer-stt">#{item.stt}</span> {item.name}
+                      </strong>
                       <p className="farmer-mobile-line">
                         <span>{item.phone || "Chưa có SĐT"}</span>
                         <span className="farmer-mobile-dot" aria-hidden="true">
@@ -587,6 +589,7 @@ export function FarmersPage() {
                 <table className="data-table wide-table">
                   <thead>
                     <tr>
+                      <th>STT</th>
                       <th>Tên</th>
                       <th>Điện thoại</th>
                       <th>CCCD</th>
@@ -601,6 +604,7 @@ export function FarmersPage() {
                   <tbody>
                     {items.map((item) => (
                       <tr key={item.id}>
+                        <td>{item.stt}</td>
                         <td>{item.name}</td>
                         <td>{item.phone || "-"}</td>
                         <td>{item.citizen_id || "-"}</td>

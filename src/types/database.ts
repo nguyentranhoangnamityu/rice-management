@@ -278,6 +278,7 @@ export type Database = {
       farmers: {
         Row: {
           id: string;
+          stt: number;
           import_identity_key: string | null;
           name: string;
           phone: string | null;
@@ -297,6 +298,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          stt?: number;
           import_identity_key?: string | null;
           name: string;
           phone?: string | null;
@@ -501,6 +503,7 @@ export type Database = {
           broker_commission_total: number;
           payment_status: Database["public"]["Enums"]["payment_status"];
           contract_sequence: number | null;
+          receipt_sequence: number;
           source_import_key: string | null;
           source_row_number: number | null;
           source_unit: string | null;
@@ -534,6 +537,7 @@ export type Database = {
           broker_commission_total?: number;
           payment_status?: Database["public"]["Enums"]["payment_status"];
           contract_sequence?: number | null;
+          receipt_sequence?: number;
           source_import_key?: string | null;
           source_row_number?: number | null;
           source_unit?: string | null;

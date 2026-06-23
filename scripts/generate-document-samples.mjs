@@ -126,26 +126,29 @@ const [headers, ...rows] = XLSX.utils.sheet_to_json(sheet, {
   raw: false,
 });
 const sourceRows = rows.filter((row) => row.some((value) => value !== "")).slice(0, 2);
-const farmerOrdinals = new Map();
+const dailySequences = new Map();
 
 await fs.mkdir(outputDir, { recursive: true });
 
 for (const [index, row] of sourceRows.entries()) {
   const source = Object.fromEntries(headers.map((header, column) => [header, row[column]]));
   const date = parseDate(source["NGÀY"]);
+  const dateKey = date.iso;
+  const dailySequence = (dailySequences.get(dateKey) ?? 0) + 1;
+  dailySequences.set(dateKey, dailySequence);
+  const documentCode = `${date.year}${date.day}${date.month}${String(dailySequence).padStart(2, "0")}`;
   const farmerName = String(source["TÊN NÔNG DÂN"]).trim();
   const citizenId =
     citizenIdOverrides.get(normalizeName(farmerName)) ?? String(source["CCCD NÔNG DÂN"]).trim();
-  const farmerKey = citizenId || normalizeName(farmerName);
-  const farmerOrdinal = (farmerOrdinals.get(farmerKey) ?? 0) + 1;
-  farmerOrdinals.set(farmerKey, farmerOrdinal);
-  const contractNo = `${String(farmerOrdinal).padStart(3, "0")}/${date.year}-HĐMB/CLTV`;
+  const contractNo = `${documentCode}-HĐMB/CLTV`;
+  const receiptNo = documentCode;
   const weight = parseNumber(source["KHỐI LƯỢNG"]);
   const unitPrice = parseNumber(source["ĐƠN GIÁ"]);
   const totalAmount = parseNumber(source["THÀNH TIỀN"]);
   const authorizedPersonName = String(source["TÊN NGƯỜI ĐƯỢC ỦY QUYỀN"]).trim();
   const baseData = {
     contract_no: contractNo,
+    receipt_no: receiptNo,
     contract_day: date.day,
     contract_month: date.month,
     contract_year: date.year,
@@ -153,6 +156,7 @@ for (const [index, row] of sourceRows.entries()) {
     receipt_month: date.month,
     receipt_year: date.year,
     receipt_location: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
+    location: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
     farmer_name: farmerName,
     farmer_permanent_address: String(source["ĐỊA CHỈ NÔNG DÂN"]).trim(),
     farmer_citizen_id: citizenId,
