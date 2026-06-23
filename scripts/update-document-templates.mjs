@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import PizZip from "pizzip";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -158,6 +159,11 @@ await patchTemplate("GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx", (inputXml) => {
     xml = replaceParagraph(xml, matcher, replacement);
   }
   return xml;
+});
+
+execFileSync(process.execPath, ["scripts/fix-authorization-signature-layout.mjs"], {
+  cwd: rootDir,
+  stdio: "inherit",
 });
 
 console.log("Đã cập nhật 3 mẫu DOCX.");
