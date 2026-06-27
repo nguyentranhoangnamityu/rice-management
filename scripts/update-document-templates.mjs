@@ -50,27 +50,18 @@ function replaceParagraph(xml, matcher, replacement) {
   return nextXml;
 }
 
-function replaceCellParagraph(cellXml, replacement, alignment = "left") {
+function replaceCellParagraph(cellXml, replacement) {
   const encodedText = encodeXmlText(replacement);
   const runProperties = [
     '<w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>',
     '<w:color w:val="000000"/>',
-    '<w:sz w:val="18"/>',
-    '<w:szCs w:val="18"/>',
+    '<w:sz w:val="24"/>',
+    '<w:szCs w:val="24"/>',
   ].join("");
 
   return cellXml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, (paragraph) => {
     const openingTag = paragraph.match(/^<w:p(?:\s[^>]*)?>/)?.[0] ?? "<w:p>";
-    let paragraphProperties = paragraph.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "<w:pPr/>";
-    const justification = `<w:jc w:val="${alignment}"/>`;
-
-    if (paragraphProperties === "<w:pPr/>") {
-      paragraphProperties = `<w:pPr>${justification}</w:pPr>`;
-    } else if (/<w:jc\b[^>]*\/>/.test(paragraphProperties)) {
-      paragraphProperties = paragraphProperties.replace(/<w:jc\b[^>]*\/>/, justification);
-    } else {
-      paragraphProperties = paragraphProperties.replace("</w:pPr>", `${justification}</w:pPr>`);
-    }
+    const paragraphProperties = paragraph.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
 
     return `${openingTag}${paragraphProperties}<w:r><w:rPr>${runProperties}</w:rPr><w:t xml:space="preserve">${encodedText}</w:t></w:r></w:p>`;
   });
@@ -95,7 +86,7 @@ function replaceFirstBlankPurchaseRow(xml, replacements) {
       const replacedRow = row.replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, (cell) => {
         const current = replacements[cellIndex];
         cellIndex += 1;
-        return replaceCellParagraph(cell, current.text, current.alignment);
+        return replaceCellParagraph(cell, current.text);
       });
       rowReplaced = true;
       return replacedRow;
@@ -125,6 +116,63 @@ function applyTimesNewRomanToPlaceholderRuns(xml) {
 
     return run.replace(/^(<w:r(?:\s[^>]*)?>)/, `$1<w:rPr>${fontProperties}</w:rPr>`);
   });
+}
+
+function setRunTypography(run, fontSizeHalfPoints = null) {
+  const fontProperties =
+    '<w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>';
+
+  const updateRunProperties = (runProperties) => {
+    let nextProperties = runProperties;
+    if (/<w:rFonts\b[^>]*\/>/.test(nextProperties)) {
+      nextProperties = nextProperties.replace(/<w:rFonts\b[^>]*\/>/, fontProperties);
+    } else {
+      nextProperties = nextProperties.replace("<w:rPr>", `<w:rPr>${fontProperties}`);
+    }
+
+    if (fontSizeHalfPoints !== null) {
+      const size = `<w:sz w:val="${fontSizeHalfPoints}"/>`;
+      const complexSize = `<w:szCs w:val="${fontSizeHalfPoints}"/>`;
+      nextProperties = /<w:sz\b[^>]*\/>/.test(nextProperties)
+        ? nextProperties.replace(/<w:sz\b[^>]*\/>/, size)
+        : nextProperties.replace("</w:rPr>", `${size}</w:rPr>`);
+      nextProperties = /<w:szCs\b[^>]*\/>/.test(nextProperties)
+        ? nextProperties.replace(/<w:szCs\b[^>]*\/>/, complexSize)
+        : nextProperties.replace("</w:rPr>", `${complexSize}</w:rPr>`);
+    }
+
+    return nextProperties;
+  };
+
+  if (/<w:rPr>[\s\S]*?<\/w:rPr>/.test(run)) {
+    return run.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, updateRunProperties);
+  }
+
+  const sizeProperties = fontSizeHalfPoints === null
+    ? ""
+    : `<w:sz w:val="${fontSizeHalfPoints}"/><w:szCs w:val="${fontSizeHalfPoints}"/>`;
+  return run.replace(
+    /^(<w:r(?:\s[^>]*)?>)/,
+    `$1<w:rPr>${fontProperties}${sizeProperties}</w:rPr>`,
+  );
+}
+
+function normalizeBangKeTypography(xml) {
+  let normalizedXml = xml.replace(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g, (run) =>
+    setRunTypography(run),
+  );
+
+  normalizedXml = normalizedXml.replace(
+    /<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g,
+    (table) => table.replace(
+      /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g,
+      (run) => setRunTypography(run, 24),
+    ),
+  );
+
+  return normalizedXml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, (row) =>
+    row.includes("{{purchase_date}}") ? row.replace(/<w:jc\b[^>]*\/>/g, "") : row,
+  );
 }
 
 async function patchTemplate(fileName, patcher) {
@@ -262,7 +310,7 @@ await patchTemplate("bang-ke.docx", (inputXml) => {
     }
 
     patchedXml = patchedXml.replaceAll("{{note}}", "");
-    return applyTimesNewRomanToPlaceholderRuns(patchedXml);
+    return normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(patchedXml));
   }
 
   let xml = inputXml;
@@ -277,16 +325,16 @@ await patchTemplate("bang-ke.docx", (inputXml) => {
     "- Địa chỉ nơi tổ chức thu mua: {{procurement_address}}",
   );
   xml = replaceFirstBlankPurchaseRow(xml, [
-    { text: "{{purchase_date}}", alignment: "center" },
-    { text: "{{farmer_name}}", alignment: "left" },
-    { text: "{{farmer_permanent_address}}", alignment: "left" },
-    { text: "{{farmer_citizen_id}}", alignment: "center" },
-    { text: "{{farmer_phone}}", alignment: "center" },
-    { text: "{{rice_type}}", alignment: "left" },
-    { text: "{{quantity}}", alignment: "center" },
-    { text: "{{unit_price}}", alignment: "right" },
-    { text: "{{total_amount}}", alignment: "right" },
-    { text: "", alignment: "left" },
+    { text: "{{purchase_date}}" },
+    { text: "{{farmer_name}}" },
+    { text: "{{farmer_permanent_address}}" },
+    { text: "{{farmer_citizen_id}}" },
+    { text: "{{farmer_phone}}" },
+    { text: "{{rice_type}}" },
+    { text: "{{quantity}}" },
+    { text: "{{unit_price}}" },
+    { text: "{{total_amount}}" },
+    { text: "" },
   ]);
   xml = replaceParagraph(
     xml,
@@ -299,7 +347,7 @@ await patchTemplate("bang-ke.docx", (inputXml) => {
       text.trim().startsWith("Ngày ….") && text.includes("tháng") && text.includes("năm"),
     "Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}}",
   );
-  return applyTimesNewRomanToPlaceholderRuns(xml);
+  return normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(xml));
 });
 
 execFileSync(process.execPath, ["scripts/fix-authorization-signature-layout.mjs"], {

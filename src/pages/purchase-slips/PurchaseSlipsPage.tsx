@@ -1578,7 +1578,7 @@ function buildPurchaseStatementTemplateData(item: SlipRow) {
     rice_type: toText(item.riceType?.name),
     quantity: `${formatNumber(item.weight_kg)} kg`,
     unit_price: formatNumber(item.unit_price),
-    total_amount: formatNumber(item.total_amount),
+    total_amount: `${formatNumber(item.total_amount)} đồng`,
     total_amount_words: moneyToVietnameseWords(item.total_amount),
   };
 }

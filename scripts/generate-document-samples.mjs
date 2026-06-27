@@ -203,7 +203,7 @@ for (const [index, row] of sourceRows.entries()) {
     farmer_phone: "",
     quantity: `${formatNumber(weight)} kg`,
     unit_price: formatMoney(unitPrice),
-    total_amount: formatMoney(totalAmount),
+    total_amount: `${formatMoney(totalAmount)} đồng`,
   };
   const prefix = `${String(index + 1).padStart(2, "0")}-${farmerName
     .normalize("NFD")
