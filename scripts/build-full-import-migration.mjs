@@ -5,20 +5,27 @@ import { createHash } from "node:crypto";
 import * as XLSX from "xlsx";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sourceFileName = "FILE HĐ MUA LÚA FULL TỚI 04.05.2026.xlsx";
+const sourceFileName = "HĐ MUA LÚA 2 MÙA ĐẦU NĂM.xlsx";
 const workbookPath = path.join(rootDir, "public", "templates", sourceFileName);
 const outputPath = path.join(
   rootDir,
   "supabase",
   "migrations",
-  "202606240002_reimport_excel_purchase_data.sql",
+  "202606270002_import_two_seasons_purchase_data.sql",
 );
 
+// Seed-only mappings. The compound key ensures non-conflicting source CCCDs stay unchanged.
 const citizenIdOverrides = new Map([
-  ["TRỊNH VĂN HAI", "087064012200"],
-  ["ĐINH CÔNG BÉ", "087064012201"],
-  ["ĐINH THỊ THU NGÂN", "087164012202"],
+  ["087164012200|TRỊNH VĂN HAI", "087064012200"],
+  ["087164012200|ĐINH CÔNG BÉ", "087064012201"],
+  ["093068010749|DƯƠNG VĂN BÉ BA", "093068010750"],
+  ["093064000567|NGUYỄN VĂN LÂM", "093064000568"],
+  ["091081010022|DOANH OANH THI", "091081010023"],
+  ["093071009040|ĐINH CÔNG LÒNG", "093071009041"],
+  ["093076007228|TRƯƠNG VĂN THẬT", "093076007229"],
 ]);
+
+const sourceImportPrefix = "excel-2026-two-seasons";
 
 function text(value) {
   return String(value ?? "").trim().normalize("NFC");
@@ -26,6 +33,19 @@ function text(value) {
 
 function normalizeName(value) {
   return text(value).toLocaleUpperCase("vi-VN").replace(/\s+/g, " ");
+}
+
+function optionalText(value) {
+  const normalized = text(value);
+  return normalized && normalized.toLocaleUpperCase("vi-VN") !== "#N/A"
+    ? normalized
+    : null;
+}
+
+function assertCitizenId(value, label, rowNumber) {
+  if (!/^\d{12}$/.test(value)) {
+    throw new Error(`${label} tại dòng ${rowNumber} phải gồm đúng 12 chữ số: ${value}`);
+  }
 }
 
 function parseNumber(value) {
@@ -59,8 +79,8 @@ const payload = rows.map((row, index) => {
   const receiptNo = text(source["SỐ BIÊN BẢN"]);
   const farmerName = text(source["TÊN NÔNG DÂN"]);
   const sourceFarmerCitizenId = text(source["CCCD NÔNG DÂN"]);
-  const farmerCitizenId =
-    citizenIdOverrides.get(normalizeName(farmerName)) ?? sourceFarmerCitizenId;
+  const overrideKey = `${sourceFarmerCitizenId}|${normalizeName(farmerName)}`;
+  const farmerCitizenId = citizenIdOverrides.get(overrideKey) ?? sourceFarmerCitizenId;
   const farmerIdentityKey = `farmer:${farmerCitizenId || keyPart(farmerName)}`;
 
   if (!contractNo) {
@@ -69,9 +89,19 @@ const payload = rows.map((row, index) => {
   if (!receiptNo) {
     throw new Error(`Thiếu SỐ BIÊN BẢN tại dòng ${index + 2}`);
   }
+  if (!farmerName) {
+    throw new Error(`Thiếu TÊN NÔNG DÂN tại dòng ${index + 2}`);
+  }
+  assertCitizenId(sourceFarmerCitizenId, "CCCD NÔNG DÂN", index + 2);
+  assertCitizenId(farmerCitizenId, "CCCD NÔNG DÂN sau khi xử lý trùng", index + 2);
 
-  const authorizedName = text(source["TÊN NGƯỜI ĐƯỢC ỦY QUYỀN"]);
-  const authorizedCitizenId = text(source["CCCD NGƯỜI ĐƯỢC ỦY QUYỀN"]);
+  const authorizedName = optionalText(source["TÊN NGƯỜI ĐƯỢC ỦY QUYỀN"]);
+  const authorizedCitizenId = authorizedName
+    ? optionalText(source["CCCD NGƯỜI ĐƯỢC ỦY QUYỀN"])
+    : null;
+  if (authorizedCitizenId) {
+    assertCitizenId(authorizedCitizenId, "CCCD NGƯỜI ĐƯỢC ỦY QUYỀN", index + 2);
+  }
   const authorizedIdentityKey = authorizedName
     ? `authorized:${authorizedCitizenId || keyPart(authorizedName)}`
     : null;
@@ -92,7 +122,7 @@ const payload = rows.map((row, index) => {
 
   return {
     source_row_number: index + 2,
-    source_import_key: `excel-2026-${index + 2}-${fingerprint}`,
+    source_import_key: `${sourceImportPrefix}-${index + 2}-${fingerprint}`,
     purchase_date: purchaseDate,
     contract_no: contractNo,
     receipt_no: receiptNo,
@@ -105,13 +135,15 @@ const payload = rows.map((row, index) => {
     farmer_bank_account_number: text(source["SỐ TÀI KHOẢN NÔNG DÂN"]) || null,
     farmer_bank_name: text(source["NGÂN HÀNG TÀI KHOẢN NÔNG DÂN"]) || null,
     authorized_identity_key: authorizedIdentityKey,
-    authorized_name: authorizedName || null,
-    authorized_citizen_id: authorizedCitizenId || null,
-    authorized_address: text(source["ĐỊA CHỈ NGƯỜI ĐƯỢC ỦY QUYỀN"]) || null,
+    authorized_name: authorizedName,
+    authorized_citizen_id: authorizedCitizenId,
+    authorized_address: authorizedName
+      ? optionalText(source["ĐỊA CHỈ NGƯỜI ĐƯỢC ỦY QUYỀN"])
+      : null,
     authorized_bank_account_number:
-      text(source["SỐ TÀI KHOẢN NGƯỜI ĐƯỢC ỦY QUYỀN"]) || null,
+      authorizedName ? optionalText(source["SỐ TÀI KHOẢN NGƯỜI ĐƯỢC ỦY QUYỀN"]) : null,
     authorized_bank_name:
-      text(source["NGÂN HÀNG TÀI KHOẢN NGƯỜI ĐƯỢC ỦY QUYỀN"]) || null,
+      authorizedName ? optionalText(source["NGÂN HÀNG TÀI KHOẢN NGƯỜI ĐƯỢC ỦY QUYỀN"]) : null,
     rice_type: text(source["TÊN HÀNG HÓA"]),
     weight_kg: parseNumber(source["KHỐI LƯỢNG"]),
     source_unit: text(source["ĐƠN VỊ TÍNH"]),
@@ -119,6 +151,29 @@ const payload = rows.map((row, index) => {
     total_amount: parseNumber(source["THÀNH TIỀN"]),
   };
 });
+
+const farmerNamesByCitizenId = new Map();
+for (const row of payload) {
+  const existingName = farmerNamesByCitizenId.get(row.farmer_citizen_id);
+  const normalizedName = normalizeName(row.farmer_name);
+  if (existingName && existingName !== normalizedName) {
+    throw new Error(
+      `CCCD ${row.farmer_citizen_id} vẫn bị trùng giữa ${existingName} và ${normalizedName}`,
+    );
+  }
+  farmerNamesByCitizenId.set(row.farmer_citizen_id, normalizedName);
+}
+
+const generatedCitizenIds = new Set(citizenIdOverrides.values());
+for (const row of payload) {
+  const sourceId = row.farmer_source_citizen_id ?? row.farmer_citizen_id;
+  if (!row.farmer_source_citizen_id && generatedCitizenIds.has(sourceId)) {
+    throw new Error(`CCCD seed ${sourceId} va chạm với CCCD nguồn không thuộc nhóm xử lý trùng.`);
+  }
+  if (row.authorized_citizen_id && generatedCitizenIds.has(row.authorized_citizen_id)) {
+    throw new Error(`CCCD seed ${row.authorized_citizen_id} va chạm với CCCD người được ủy quyền.`);
+  }
+}
 
 const totalWeight = payload.reduce((sum, row) => sum + row.weight_kg, 0);
 const totalAmount = payload.reduce((sum, row) => sum + row.total_amount, 0);
@@ -143,6 +198,19 @@ declare
   imported_weight numeric(16, 2);
   imported_amount numeric(18, 2);
 begin
+  delete from public.authorization_letter_purchase_slips
+  where purchase_slip_id in (
+    select id from public.purchase_slips where source_import_key like 'excel-2026-%'
+  );
+  delete from public.purchase_slip_attachments
+  where purchase_slip_id in (
+    select id from public.purchase_slips where source_import_key like 'excel-2026-%'
+  );
+  delete from public.purchase_slips where source_import_key like 'excel-2026-%';
+  delete from public.authorization_letters where source_import_key like 'authorization-excel-2026-%';
+  delete from public.authorized_recipients where import_identity_key like 'authorized:%';
+  delete from public.farmers where import_identity_key like 'farmer:%';
+
   for item in
     select value from jsonb_array_elements($import$${json}$import$::jsonb)
   loop
@@ -365,7 +433,7 @@ begin
   select count(*), coalesce(sum(weight_kg), 0), coalesce(sum(total_amount), 0)
     into imported_slips_count, imported_weight, imported_amount
   from public.purchase_slips
-  where source_import_key like 'excel-2026-%';
+  where source_import_key like '${sourceImportPrefix}-%';
 
   if imported_farmers_count <> ${uniqueFarmers}
     or imported_recipients_count <> ${uniqueAuthorizedRecipients}

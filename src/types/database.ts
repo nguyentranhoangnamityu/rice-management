@@ -506,6 +506,7 @@ export type Database = {
           receipt_sequence: number | null;
           contract_no: string | null;
           receipt_no: string | null;
+          dossier_downloaded_at: string | null;
           source_import_key: string | null;
           source_row_number: number | null;
           source_unit: string | null;
@@ -542,6 +543,7 @@ export type Database = {
           receipt_sequence?: number | null;
           contract_no?: string | null;
           receipt_no?: string | null;
+          dossier_downloaded_at?: string | null;
           source_import_key?: string | null;
           source_row_number?: number | null;
           source_unit?: string | null;

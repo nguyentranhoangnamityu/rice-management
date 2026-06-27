@@ -49,6 +49,12 @@ const signatureTable = `<w:tbl>
 const zip = new PizZip(fs.readFileSync(templatePath))
 let xml = zip.file('word/document.xml').asText()
 
+const alreadyFixed = /<w:tbl(?:\s[^>]*)?>[\s\S]*?\{\{authorized_person_name\}\}[\s\S]*?\{\{farmer_name\}\}[\s\S]*?<\/w:tbl>/.test(xml)
+if (alreadyFixed) {
+  console.log('Bố cục ký tên đã là bảng 2 cột')
+  process.exit(0)
+}
+
 // Chỉ thay dòng ký tên cuối — không đụng đoạn nội dung có cả 2 placeholder trong cùng câu.
 const signaturePatterns = [
   /<w:p[^>]*w14:paraId="00000024"[\s\S]*?<\/w:p>/,
@@ -57,15 +63,6 @@ const signaturePatterns = [
 
 const signatureParagraph = signaturePatterns.find((pattern) => pattern.test(xml))
 if (!signatureParagraph) {
-  const alreadyFixed =
-    xml.includes('<w:tblLayout w:type="fixed"/>') &&
-    xml.includes('{{authorized_person_name}}') &&
-    xml.includes('{{farmer_name}}')
-  if (alreadyFixed) {
-    console.log('Bố cục ký tên đã là bảng 2 cột')
-    process.exit(0)
-  }
-
   console.error('Không tìm thấy đoạn ký tên cuối tài liệu')
   process.exit(1)
 }

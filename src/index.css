@@ -735,12 +735,22 @@ a {
    10. SPREADSHEET-LIKE DATA TABLES
    -------------------------------------------------------- */
 .table-toolbar {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.table-toolbar-actions {
   display: flex;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 16px;
+}
+
+.filter-reset-actions {
+  display: flex;
+  min-width: 132px;
 }
 
 .bulk-document-actions {
@@ -775,37 +785,75 @@ a {
 }
 
 .table-toolbar-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(260px, 1.8fr) repeat(5, minmax(145px, 1fr));
   gap: 12px;
-  flex: 1 1 320px;
+  align-items: end;
 }
 
 .date-range-filter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
+  display: contents;
 }
 
-.date-filter-field {
+.toolbar-filter-field {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
 }
 
-.date-filter-field input[type="date"] {
-  min-height: 40px;
-  min-width: 148px;
+.toolbar-filter-field > span {
+  min-height: 16px;
+  line-height: 16px;
+}
+
+.toolbar-filter-field > input,
+.toolbar-filter-field > select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  background: var(--surface);
-  padding: 8px 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  padding: 9px 12px;
   font-size: 14px;
+}
+
+.toolbar-filter-field > input:focus,
+.toolbar-filter-field > select:focus {
+  border-color: var(--border-focus);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.toolbar-search-filter .search-field {
+  width: 100%;
+  min-height: 44px;
+}
+
+@media (max-width: 1500px) {
+  .table-toolbar-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .toolbar-search-filter {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 1100px) {
+  .table-toolbar-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .toolbar-search-filter {
+    grid-column: 1 / -1;
+  }
 }
 
 .bulk-progress {
@@ -830,6 +878,10 @@ a {
   height: 20px;
   accent-color: var(--primary);
   cursor: pointer;
+}
+
+.temporarily-hidden-slip-column {
+  display: none;
 }
 
 .search-field {
@@ -912,6 +964,32 @@ a {
 
 .data-table tr:last-child td {
   border-bottom: 0;
+}
+
+.data-table th.sticky-actions-column,
+.data-table td.sticky-actions-column {
+  position: sticky;
+  right: 0;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  border-left: 1px solid var(--border-light);
+  box-shadow: -10px 0 16px -16px rgba(13, 26, 18, 0.55);
+}
+
+.data-table th.sticky-actions-column {
+  z-index: 4;
+  background: #f8faf7;
+  text-align: center;
+}
+
+.data-table td.sticky-actions-column {
+  z-index: 3;
+  background: var(--bg-card);
+}
+
+.data-table tr:hover td.sticky-actions-column {
+  background: hsl(152, 25%, 98.5%);
 }
 
 .muted-cell {
@@ -1386,6 +1464,67 @@ a {
   border-color: var(--success-border);
   background: var(--success-bg);
   color: var(--success);
+}
+
+.dossier-status-cell {
+  width: 190px;
+  min-width: 190px;
+  text-align: center !important;
+}
+
+.dossier-status-switch {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  padding: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dossier-status-switch:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.dossier-status-switch-track {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 42px;
+  align-items: center;
+  border-radius: 999px;
+  background: hsl(150, 8%, 72%);
+  padding: 3px;
+  transition: background var(--transition-fast);
+}
+
+.dossier-status-switch-thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(13, 26, 18, 0.24);
+  transition: transform var(--transition-fast);
+}
+
+.dossier-status-switch.done {
+  color: var(--success);
+}
+
+.dossier-status-switch.done .dossier-status-switch-track {
+  background: var(--success);
+}
+
+.dossier-status-switch.done .dossier-status-switch-thumb {
+  transform: translateX(18px);
 }
 
 .back-link {
@@ -2376,6 +2515,23 @@ a {
     justify-content: stretch;
   }
 
+  .table-toolbar-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-search-filter {
+    grid-column: 1 / -1;
+  }
+
+  .table-toolbar-actions {
+    display: grid;
+    width: 100%;
+  }
+
+  .filter-reset-actions {
+    width: 100%;
+  }
+
   .search-field {
     width: 100%;
   }
@@ -2422,6 +2578,16 @@ a {
   .stop-item > .icon-button {
     grid-column: 2;
     justify-self: end;
+  }
+}
+
+@media (max-width: 560px) {
+  .table-toolbar-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-search-filter {
+    grid-column: auto;
   }
 }
 

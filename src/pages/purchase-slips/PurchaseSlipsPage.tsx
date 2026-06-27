@@ -102,7 +102,11 @@ const slipQueryOptions = {
       supabase.from("brokers").select("id").or(`name.ilike.${pattern},phone.ilike.${pattern}`),
     ]);
 
-    const conditions = [`note.ilike.${pattern}`];
+    const conditions = [
+      `note.ilike.${pattern}`,
+      `contract_no.ilike.${pattern}`,
+      `receipt_no.ilike.${pattern}`,
+    ];
     const farmerIds = (farmersResult.data ?? []).map((farmer) => farmer.id);
     const brokerIds = (brokersResult.data ?? []).map((broker) => broker.id);
 
@@ -118,6 +122,7 @@ const slipQueryOptions = {
 };
 
 type SlipListView = "contracts" | "delivery-receipts";
+type DossierStatusFilter = "all" | "pending" | "done";
 
 export function PurchaseSlipsPage() {
   const location = useLocation();
@@ -129,8 +134,21 @@ export function PurchaseSlipsPage() {
   const [contractDateTo, setContractDateTo] = useState("");
   const [receiptDateFrom, setReceiptDateFrom] = useState("");
   const [receiptDateTo, setReceiptDateTo] = useState("");
+  const [contractNoFilter, setContractNoFilter] = useState("");
+  const [receiptNoFilter, setReceiptNoFilter] = useState("");
+  const [debouncedContractNoFilter, setDebouncedContractNoFilter] = useState("");
+  const [debouncedReceiptNoFilter, setDebouncedReceiptNoFilter] = useState("");
+  const [dossierStatusFilter, setDossierStatusFilter] = useState<DossierStatusFilter>("pending");
 
-  const applyDateFilter = useCallback(
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedContractNoFilter(contractNoFilter.trim());
+      setDebouncedReceiptNoFilter(receiptNoFilter.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [contractNoFilter, receiptNoFilter]);
+
+  const applyListFilter = useCallback(
     (query: QueryBuilder) => {
       const from = listView === "contracts" ? contractDateFrom : receiptDateFrom;
       const to = listView === "contracts" ? contractDateTo : receiptDateTo;
@@ -141,18 +159,39 @@ export function PurchaseSlipsPage() {
       if (to) {
         query = query.lte("purchase_date", to);
       }
+      if (debouncedContractNoFilter) {
+        query = query.ilike("contract_no", `%${sanitizeFilterTerm(debouncedContractNoFilter)}%`);
+      }
+      if (debouncedReceiptNoFilter) {
+        query = query.ilike("receipt_no", `%${sanitizeFilterTerm(debouncedReceiptNoFilter)}%`);
+      }
+      if (dossierStatusFilter === "pending") {
+        query = query.is("dossier_downloaded_at", null);
+      }
+      if (dossierStatusFilter === "done") {
+        query = query.not("dossier_downloaded_at", "is", null);
+      }
 
       return query;
     },
-    [listView, contractDateFrom, contractDateTo, receiptDateFrom, receiptDateTo],
+    [
+      listView,
+      contractDateFrom,
+      contractDateTo,
+      receiptDateFrom,
+      receiptDateTo,
+      debouncedContractNoFilter,
+      debouncedReceiptNoFilter,
+      dossierStatusFilter,
+    ],
   );
 
   const queryOptions = useMemo(
     () => ({
       resolveSearchFilter: slipQueryOptions.resolveSearchFilter,
-      applyFilter: applyDateFilter,
+      applyFilter: applyListFilter,
     }),
-    [applyDateFilter],
+    [applyListFilter],
   );
 
   const {
@@ -182,6 +221,7 @@ export function PurchaseSlipsPage() {
   const [generatingPurchaseStatementId, setGeneratingPurchaseStatementId] = useState<string | null>(null);
   const [generatingAuthorizationLetterId, setGeneratingAuthorizationLetterId] = useState<string | null>(null);
   const [generatingDossierId, setGeneratingDossierId] = useState<string | null>(null);
+  const [updatingDossierStatusId, setUpdatingDossierStatusId] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState<"selected" | "all" | null>(null);
   const [bulkProgress, setBulkProgress] = useState("");
   const [selectedSlipIds, setSelectedSlipIds] = useState<string[]>([]);
@@ -195,7 +235,17 @@ export function PurchaseSlipsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [listView, contractDateFrom, contractDateTo, receiptDateFrom, receiptDateTo, setPage]);
+  }, [
+    listView,
+    contractDateFrom,
+    contractDateTo,
+    receiptDateFrom,
+    receiptDateTo,
+    debouncedContractNoFilter,
+    debouncedReceiptNoFilter,
+    dossierStatusFilter,
+    setPage,
+  ]);
 
   const setActiveDateFrom = (value: string) => {
     if (listView === "contracts") {
@@ -213,14 +263,15 @@ export function PurchaseSlipsPage() {
     }
   };
 
-  const clearActiveDateFilter = () => {
-    if (listView === "contracts") {
-      setContractDateFrom("");
-      setContractDateTo("");
-    } else {
-      setReceiptDateFrom("");
-      setReceiptDateTo("");
-    }
+  const clearAllFilters = () => {
+    setSearch("");
+    setContractNoFilter("");
+    setReceiptNoFilter("");
+    setContractDateFrom("");
+    setContractDateTo("");
+    setReceiptDateFrom("");
+    setReceiptDateTo("");
+    setDossierStatusFilter("all");
   };
 
   const {
@@ -539,6 +590,36 @@ export function PurchaseSlipsPage() {
     setDeletingId(null);
   }
 
+  async function setDossierDownloaded(item: SlipRow, downloaded: boolean) {
+    setUpdatingDossierStatusId(item.id);
+    setError(null);
+
+    const { error: updateError } = await supabase
+      .from("purchase_slips")
+      .update({ dossier_downloaded_at: downloaded ? new Date().toISOString() : null })
+      .eq("id", item.id);
+
+    if (updateError) {
+      setError(formatDbError(updateError));
+    } else {
+      await refresh(page);
+    }
+
+    setUpdatingDossierStatusId(null);
+  }
+
+  async function markDossiersDownloaded(ids: string[]) {
+    const downloadedAt = new Date().toISOString();
+    for (let index = 0; index < ids.length; index += 100) {
+      const chunk = ids.slice(index, index + 100);
+      const { error: updateError } = await supabase
+        .from("purchase_slips")
+        .update({ dossier_downloaded_at: downloadedAt })
+        .in("id", chunk);
+      if (updateError) throw updateError;
+    }
+  }
+
   async function generateContractDocx(item: SlipRow) {
     setGeneratingContractId(item.id);
     setError(null);
@@ -674,7 +755,9 @@ export function PurchaseSlipsPage() {
         templates,
         new Map([[item.id, documentNumbers]]),
       );
-      saveAs(archive, `bo-ho-so-${sanitizeFileName(item.farmer?.name || "nong-dan")}.zip`);
+      saveAs(archive, buildDossierZipFileName(item, documentNumbers.contractNo));
+      await markDossiersDownloaded([item.id]);
+      await refresh(page);
     } catch (currentError) {
       setError(formatDocumentGenerationError(currentError, "Không thể tạo bộ hồ sơ."));
     } finally {
@@ -710,13 +793,18 @@ export function PurchaseSlipsPage() {
     setError(null);
 
     try {
-      const query = applyDateFilter(
+      let query = applyListFilter(
         supabase
           .from("purchase_slips")
           .select("*")
           .order("purchase_date", { ascending: true })
           .order("created_at", { ascending: true }),
       );
+      const searchFilter = await slipQueryOptions.resolveSearchFilter(search);
+      if (searchFilter) {
+        query = query.or(searchFilter);
+      }
+
       const result =
         mode === "selected"
           ? await query.in("id", selectedSlipIds)
@@ -724,7 +812,7 @@ export function PurchaseSlipsPage() {
 
       if (result.error) throw result.error;
 
-      const dossierItems = (result.data ?? []).map(hydrateSlip);
+      const dossierItems: SlipRow[] = ((result.data ?? []) as PurchaseSlip[]).map(hydrateSlip);
       if (dossierItems.length === 0) throw new Error("Không có phiếu mua để tạo hồ sơ.");
 
       const [templates, documentNumbers] = await Promise.all([
@@ -746,6 +834,9 @@ export function PurchaseSlipsPage() {
           ? `toan-bo-ho-so-${new Date().toISOString().slice(0, 10)}.zip`
           : `ho-so-da-chon-${dossierItems.length}-bo.zip`,
       );
+      setBulkProgress(`Đang đánh dấu ${dossierItems.length} hồ sơ đã xong...`);
+      await markDossiersDownloaded(dossierItems.map((item) => item.id));
+      await refresh(page);
       setBulkProgress(`Đã tạo ${dossierItems.length} bộ hồ sơ.`);
     } catch (currentError) {
       setError(formatDocumentGenerationError(currentError, "Không thể tạo hồ sơ đồng loạt."));
@@ -992,16 +1083,48 @@ export function PurchaseSlipsPage() {
 
           <div className="table-toolbar">
             <div className="table-toolbar-filters">
-              <label className="search-field">
-                <Search size={17} aria-hidden="true" />
+              <div className="toolbar-filter-field toolbar-search-filter">
+                <span>Tìm kiếm</span>
+                <label className="search-field">
+                  <Search size={17} aria-hidden="true" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Nông dân, cò hoặc mã chứng từ"
+                  />
+                </label>
+              </div>
+              <label className="toolbar-filter-field">
+                <span>Mã hợp đồng</span>
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Tìm theo nông dân, cò, chuyến hàng, loại lúa"
+                  type="search"
+                  value={contractNoFilter}
+                  onChange={(event) => setContractNoFilter(event.target.value)}
+                  placeholder="VD: 0012026"
                 />
               </label>
+              <label className="toolbar-filter-field">
+                <span>Mã biên nhận</span>
+                <input
+                  type="search"
+                  value={receiptNoFilter}
+                  onChange={(event) => setReceiptNoFilter(event.target.value)}
+                  placeholder="VD: 0012026"
+                />
+              </label>
+              <label className="toolbar-filter-field">
+                <span>Trạng thái hồ sơ</span>
+                <select
+                  value={dossierStatusFilter}
+                  onChange={(event) => setDossierStatusFilter(event.target.value as DossierStatusFilter)}
+                >
+                  <option value="pending">Chưa xong</option>
+                  <option value="done">Đã xong</option>
+                  <option value="all">Tất cả</option>
+                </select>
+              </label>
               <div className="date-range-filter">
-                <label className="date-filter-field">
+                <label className="toolbar-filter-field">
                   <span>
                     {listView === "contracts" ? "Ngày HĐ từ" : "Ngày BBGN từ"}
                   </span>
@@ -1011,7 +1134,7 @@ export function PurchaseSlipsPage() {
                     onChange={(event) => setActiveDateFrom(event.target.value)}
                   />
                 </label>
-                <label className="date-filter-field">
+                <label className="toolbar-filter-field">
                   <span>Đến</span>
                   <input
                     type="date"
@@ -1019,34 +1142,44 @@ export function PurchaseSlipsPage() {
                     onChange={(event) => setActiveDateTo(event.target.value)}
                   />
                 </label>
-                {activeDateFrom || activeDateTo ? (
-                  <button className="secondary-button compact-action-button" type="button" onClick={clearActiveDateFilter}>
-                    Xóa lọc ngày
+              </div>
+            </div>
+            <div className="table-toolbar-actions">
+              <div className="filter-reset-actions">
+                {search ||
+                contractNoFilter ||
+                receiptNoFilter ||
+                activeDateFrom ||
+                activeDateTo ||
+                dossierStatusFilter !== "all" ? (
+                  <button className="secondary-button compact-action-button" type="button" onClick={clearAllFilters}>
+                    <X size={16} aria-hidden="true" />
+                    Xóa bộ lọc
                   </button>
                 ) : null}
               </div>
-            </div>
-            <div className="bulk-document-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={selectedSlipIds.length === 0 || bulkGenerating !== null}
-                onClick={() => void generateBulkDossiers("selected")}
-              >
-                <Files size={17} aria-hidden="true" />
-                {bulkGenerating === "selected"
-                  ? "Đang tạo..."
-                  : `Tạo bộ hồ sơ đã chọn (${selectedSlipIds.length})`}
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                disabled={total === 0 || bulkGenerating !== null}
-                onClick={() => void generateBulkDossiers("all")}
-              >
-                <Archive size={17} aria-hidden="true" />
-                {bulkGenerating === "all" ? "Đang tạo tất cả..." : `Tạo hồ sơ tất cả (${total})`}
-              </button>
+              <div className="bulk-document-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={selectedSlipIds.length === 0 || bulkGenerating !== null}
+                  onClick={() => void generateBulkDossiers("selected")}
+                >
+                  <Files size={17} aria-hidden="true" />
+                  {bulkGenerating === "selected"
+                    ? "Đang tạo..."
+                    : `Tạo bộ hồ sơ đã chọn (${selectedSlipIds.length})`}
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={total === 0 || bulkGenerating !== null}
+                  onClick={() => void generateBulkDossiers("all")}
+                >
+                  <Archive size={17} aria-hidden="true" />
+                  {bulkGenerating === "all" ? "Đang tạo tất cả..." : `Tạo hồ sơ tất cả (${total})`}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1074,14 +1207,15 @@ export function PurchaseSlipsPage() {
                     <th>Ngày</th>
                     <th>{listView === "contracts" ? "Mã hợp đồng" : "Mã biên bản"}</th>
                     <th>Nông dân</th>
-                    <th>Cò lúa</th>
-                    <th>Chuyến hàng</th>
-                    <th>Loại lúa</th>
-                    <th>Kg</th>
-                    <th>Thành tiền</th>
-                    <th>Hoa hồng</th>
-                    <th>Thanh toán</th>
-                    <th aria-label="Thao tác" />
+                    <th className="temporarily-hidden-slip-column">Cò lúa</th>
+                    <th className="temporarily-hidden-slip-column">Chuyến hàng</th>
+                    <th className="temporarily-hidden-slip-column">Loại lúa</th>
+                    <th className="temporarily-hidden-slip-column">Kg</th>
+                    <th className="temporarily-hidden-slip-column">Thành tiền</th>
+                    <th className="temporarily-hidden-slip-column">Hoa hồng</th>
+                    <th className="temporarily-hidden-slip-column">Thanh toán</th>
+                    <th className="dossier-status-cell">Hồ sơ</th>
+                    <th className="sticky-actions-column" aria-label="Thao tác">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1102,23 +1236,39 @@ export function PurchaseSlipsPage() {
                           : item.receipt_no || "-"}
                       </td>
                       <td>{item.farmer?.name || "-"}</td>
-                      <td>
+                      <td className="temporarily-hidden-slip-column">
                         <div>{item.broker?.name || "-"}</div>
                         {getAuthorizedPersonName(item) ? (
                           <span className="muted-text">Nhận UQ: {getAuthorizedPersonName(item)}</span>
                         ) : null}
                       </td>
-                      <td>{item.trip?.code || "-"}</td>
-                      <td>{item.riceType?.name || "-"}</td>
-                      <td>{formatNumber(item.weight_kg)}</td>
-                      <td>{formatMoney(item.total_amount)}</td>
-                      <td>{formatMoney(item.broker_commission_total)}</td>
-                      <td className="payment-status-cell">
+                      <td className="temporarily-hidden-slip-column">{item.trip?.code || "-"}</td>
+                      <td className="temporarily-hidden-slip-column">{item.riceType?.name || "-"}</td>
+                      <td className="temporarily-hidden-slip-column">{formatNumber(item.weight_kg)}</td>
+                      <td className="temporarily-hidden-slip-column">{formatMoney(item.total_amount)}</td>
+                      <td className="temporarily-hidden-slip-column">{formatMoney(item.broker_commission_total)}</td>
+                      <td className="payment-status-cell temporarily-hidden-slip-column">
                         <span className={`payment-status-chip ${getPaymentStatusClass(item.payment_status)}`}>
                           {formatPaymentStatus(item.payment_status)}
                         </span>
                       </td>
-                      <td>
+                      <td className="dossier-status-cell">
+                        <button
+                          className={`dossier-status-switch${item.dossier_downloaded_at ? " done" : ""}`}
+                          type="button"
+                          role="switch"
+                          aria-checked={Boolean(item.dossier_downloaded_at)}
+                          aria-label={`${item.dossier_downloaded_at ? "Đánh dấu chưa xong" : "Đánh dấu đã xong"} hồ sơ của ${item.farmer?.name ?? "nông dân"}`}
+                          disabled={updatingDossierStatusId === item.id}
+                          onClick={() => void setDossierDownloaded(item, !item.dossier_downloaded_at)}
+                        >
+                          <span className="dossier-status-switch-track" aria-hidden="true">
+                            <span className="dossier-status-switch-thumb" />
+                          </span>
+                          <span>{item.dossier_downloaded_at ? "Đã xong" : "Chưa xong"}</span>
+                        </button>
+                      </td>
+                      <td className="sticky-actions-column">
                         <div className="actions-menu-wrap">
                           <button
                             className="secondary-button compact-action-button"
@@ -1730,28 +1880,28 @@ async function buildDossierArchive(
     const folderName = buildDossierFolderName(item, documentNumbers.contractNo, index);
 
     archive.file(
-      `${folderName}/01-hop-dong-mua-ban.docx`,
+      `${folderName}/01-${buildContractFileName(item)}`,
       renderDocxBytes(
         templates.contract.slice(0),
         buildContractTemplateData(item, documentNumbers.contractNo),
       ),
     );
     archive.file(
-      `${folderName}/02-bien-ban-giao-nhan.docx`,
+      `${folderName}/02-${buildDeliveryReceiptFileName(item)}`,
       renderDocxBytes(
         templates.deliveryReceipt.slice(0),
         buildDeliveryReceiptTemplateData(item, documentNumbers),
       ),
     );
     archive.file(
-      `${folderName}/03-giay-uy-quyen.docx`,
+      `${folderName}/03-${buildAuthorizationLetterFileName(item)}`,
       renderDocxBytes(
         templates.authorizationLetter.slice(0),
         buildAuthorizationLetterTemplateData(item),
       ),
     );
     archive.file(
-      `${folderName}/04-bang-ke-thu-mua.docx`,
+      `${folderName}/04-${buildPurchaseStatementFileName(item)}`,
       renderDocxBytes(
         templates.purchaseStatement.slice(0),
         buildPurchaseStatementTemplateData(item),
@@ -1776,6 +1926,11 @@ function buildDossierFolderName(item: SlipRow, contractNumber: string, index: nu
   const farmerName = sanitizeFileName(item.farmer?.name || "nong-dan");
   const safeContractNumber = sanitizeFileName(contractNumber.replaceAll("/", "-"));
   return `${order}-${farmerName}-${safeContractNumber}`;
+}
+
+function buildDossierZipFileName(item: SlipRow, contractNumber: string) {
+  const farmerName = sanitizeFileName(item.farmer?.name || "nong-dan");
+  return `bo-ho-so - ${sanitizeFileName(contractNumber)} - ${farmerName}.zip`;
 }
 
 function formatDocumentGenerationError(error: unknown, fallback: string) {
@@ -1860,29 +2015,29 @@ function fillLine() {
 }
 
 function buildContractFileName(item: SlipRow) {
-  const fallbackName = "nong-dan";
-  const rawName = item.farmer?.name?.trim() || fallbackName;
-  const sanitizedName = rawName
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return `${sanitizedName || fallbackName}.docx`;
+  return buildDocumentFileName(item.contract_no, item.farmer?.name, "hop-dong");
 }
 
 function buildDeliveryReceiptFileName(item: SlipRow) {
-  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
-  return `bien-ban-giao-nhan-${farmerName}.docx`;
+  return buildDocumentFileName(item.receipt_no, item.farmer?.name, "bien-ban-giao-nhan");
 }
 
 function buildAuthorizationLetterFileName(item: SlipRow) {
-  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
-  return `giay-uy-quyen-${farmerName}.docx`;
+  return buildDocumentFileName(item.contract_no, item.farmer?.name, "giay-uy-quyen");
 }
 
 function buildPurchaseStatementFileName(item: SlipRow) {
-  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
-  return `bang-ke-thu-mua-${farmerName}.docx`;
+  return buildDocumentFileName(item.contract_no, item.farmer?.name, "bang-ke");
+}
+
+function buildDocumentFileName(
+  documentNumber: string | null | undefined,
+  farmerName: string | null | undefined,
+  documentType: string,
+) {
+  const safeNumber = sanitizeFileName(documentNumber?.trim() || "khong-ma");
+  const safeFarmerName = sanitizeFileName(farmerName?.trim() || "nong-dan");
+  return `${safeNumber} - ${safeFarmerName} - ${documentType}.docx`;
 }
 
 function getDateParts(value: string | null | undefined) {
@@ -1904,7 +2059,12 @@ function getDateParts(value: string | null | undefined) {
 
 function sanitizeFileName(value: string) {
   return value
-    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/[\\/:*?"<>|]+/g, "-")
     .replace(/\s+/g, " ")
+    .replace(/-+/g, "-")
     .trim();
+}
+
+function sanitizeFilterTerm(value: string) {
+  return value.replace(/[%_,]/g, "").trim();
 }

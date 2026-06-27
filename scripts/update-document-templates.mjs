@@ -55,8 +55,8 @@ function replaceCellParagraph(cellXml, replacement) {
   const runProperties = [
     '<w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>',
     '<w:color w:val="000000"/>',
-    '<w:sz w:val="24"/>',
-    '<w:szCs w:val="24"/>',
+    '<w:sz w:val="18"/>',
+    '<w:szCs w:val="18"/>',
   ].join("");
 
   return cellXml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, (paragraph) => {
@@ -164,15 +164,53 @@ function normalizeBangKeTypography(xml) {
 
   normalizedXml = normalizedXml.replace(
     /<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g,
-    (table) => table.replace(
-      /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g,
-      (run) => setRunTypography(run, 24),
-    ),
+    (table) => decodeXmlText(table).includes("Ngày tháng năm mua hàng")
+      ? table.replace(
+          /<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g,
+          (run) => setRunTypography(run, 18),
+        )
+      : table,
   );
 
   return normalizedXml.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, (row) =>
     row.includes("{{purchase_date}}") ? row.replace(/<w:jc\b[^>]*\/>/g, "") : row,
   );
+}
+
+function removeTrailingBlankPurchaseRows(xml) {
+  let purchaseTableFound = false;
+
+  return xml.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, (table) => {
+    if (purchaseTableFound || !decodeXmlText(table).includes("Ngày tháng năm mua hàng")) {
+      return table;
+    }
+    purchaseTableFound = true;
+
+    const rows = table.match(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g) ?? [];
+    const purchaseRowIndex = rows.findIndex((row) => row.includes("{{purchase_date}}"));
+    if (purchaseRowIndex < 0) return table;
+
+    const rowsToRemove = new Set(
+      rows
+        .map((row, index) => ({ row, index }))
+        .filter(
+          ({ row, index }) =>
+            index > purchaseRowIndex &&
+            /<w:trHeight\b/.test(row) &&
+            decodeXmlText(row).trim().length === 0,
+        )
+        .slice(0, 3)
+        .map(({ index }) => index),
+    );
+
+    if (rowsToRemove.size === 0) return table;
+    let rowIndex = 0;
+    return table.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, (row) => {
+      const shouldRemove = rowsToRemove.has(rowIndex);
+      rowIndex += 1;
+      return shouldRemove ? "" : row;
+    });
+  });
 }
 
 async function patchTemplate(fileName, patcher) {
@@ -310,7 +348,9 @@ await patchTemplate("bang-ke.docx", (inputXml) => {
     }
 
     patchedXml = patchedXml.replaceAll("{{note}}", "");
-    return normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(patchedXml));
+    return removeTrailingBlankPurchaseRows(
+      normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(patchedXml)),
+    );
   }
 
   let xml = inputXml;
@@ -347,7 +387,9 @@ await patchTemplate("bang-ke.docx", (inputXml) => {
       text.trim().startsWith("Ngày ….") && text.includes("tháng") && text.includes("năm"),
     "Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}}",
   );
-  return normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(xml));
+  return removeTrailingBlankPurchaseRows(
+    normalizeBangKeTypography(applyTimesNewRomanToPlaceholderRuns(xml)),
+  );
 });
 
 execFileSync(process.execPath, ["scripts/fix-authorization-signature-layout.mjs"], {
