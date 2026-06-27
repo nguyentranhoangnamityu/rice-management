@@ -57,6 +57,15 @@ const signaturePatterns = [
 
 const signatureParagraph = signaturePatterns.find((pattern) => pattern.test(xml))
 if (!signatureParagraph) {
+  const alreadyFixed =
+    xml.includes('<w:tblLayout w:type="fixed"/>') &&
+    xml.includes('{{authorized_person_name}}') &&
+    xml.includes('{{farmer_name}}')
+  if (alreadyFixed) {
+    console.log('Bố cục ký tên đã là bảng 2 cột')
+    process.exit(0)
+  }
+
   console.error('Không tìm thấy đoạn ký tên cuối tài liệu')
   process.exit(1)
 }

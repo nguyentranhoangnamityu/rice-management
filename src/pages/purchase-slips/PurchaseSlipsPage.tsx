@@ -179,6 +179,7 @@ export function PurchaseSlipsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingContractId, setGeneratingContractId] = useState<string | null>(null);
   const [generatingDeliveryReceiptId, setGeneratingDeliveryReceiptId] = useState<string | null>(null);
+  const [generatingPurchaseStatementId, setGeneratingPurchaseStatementId] = useState<string | null>(null);
   const [generatingAuthorizationLetterId, setGeneratingAuthorizationLetterId] = useState<string | null>(null);
   const [generatingDossierId, setGeneratingDossierId] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState<"selected" | "all" | null>(null);
@@ -302,7 +303,7 @@ export function PurchaseSlipsPage() {
   function openActionMenu(itemId: string, element: HTMLElement) {
     const rect = element.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 270;
+    const menuHeight = 312;
     const left = Math.min(window.innerWidth - menuWidth - 8, Math.max(8, rect.right - menuWidth));
     const preferredTop = rect.bottom + 6;
     const top = preferredTop + menuHeight > window.innerHeight
@@ -629,6 +630,35 @@ export function PurchaseSlipsPage() {
       setError(message);
     } finally {
       setGeneratingAuthorizationLetterId(null);
+    }
+  }
+
+  async function generatePurchaseStatementDocx(item: SlipRow) {
+    setGeneratingPurchaseStatementId(item.id);
+    setError(null);
+
+    try {
+      const response = await fetch("/templates/bang-ke.docx");
+      if (!response.ok) {
+        throw new Error("Không tìm thấy file mẫu bảng kê tại /templates/bang-ke.docx.");
+      }
+
+      const templateBuffer = await response.arrayBuffer();
+      const doc = buildContractDoc(templateBuffer);
+      doc.render(buildPurchaseStatementTemplateData(item));
+
+      const blob = doc.getZip().generate({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+      saveAs(blob, buildPurchaseStatementFileName(item));
+    } catch (currentError) {
+      const message = currentError instanceof Error
+        ? currentError.message
+        : "Không thể tạo bảng kê DOCX. Vui lòng kiểm tra lại file mẫu.";
+      setError(message);
+    } finally {
+      setGeneratingPurchaseStatementId(null);
     }
   }
 
@@ -1119,7 +1149,7 @@ export function PurchaseSlipsPage() {
                                   void generateDossier(item);
                                 }}
                                 disabled={generatingDossierId === item.id}
-                                title="Tạo bộ hồ sơ gồm 3 tệp"
+                                title="Tạo bộ hồ sơ gồm 4 tệp"
                               >
                                 <Archive size={16} aria-hidden="true" />
                                 {generatingDossierId === item.id
@@ -1173,6 +1203,20 @@ export function PurchaseSlipsPage() {
                                 {generatingDeliveryReceiptId === item.id
                                   ? "Đang tạo..."
                                   : "Tạo biên bản giao nhận"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void generatePurchaseStatementDocx(item);
+                                }}
+                                disabled={generatingPurchaseStatementId === item.id}
+                                title="Tạo bảng kê thu mua DOCX"
+                              >
+                                <FileText size={16} aria-hidden="true" />
+                                {generatingPurchaseStatementId === item.id
+                                  ? "Đang tạo..."
+                                  : "Tạo bảng kê"}
                               </button>
                               <button
                                 type="button"
@@ -1517,6 +1561,28 @@ function buildDeliveryReceiptTemplateData(item: SlipRow, documentNumbers: Docume
   };
 }
 
+function buildPurchaseStatementTemplateData(item: SlipRow) {
+  const purchaseDateParts = getDateParts(item.purchase_date);
+  const permanentAddress = toText(item.farmer?.permanent_address);
+
+  return {
+    statement_day: purchaseDateParts.day,
+    statement_month: purchaseDateParts.month,
+    statement_year: purchaseDateParts.year,
+    procurement_address: permanentAddress,
+    purchase_date: formatPurchaseDateVi(item.purchase_date),
+    farmer_name: toText(item.farmer?.name),
+    farmer_permanent_address: permanentAddress,
+    farmer_citizen_id: toText(item.farmer?.citizen_id),
+    farmer_phone: toText(item.farmer?.phone),
+    rice_type: toText(item.riceType?.name),
+    quantity: `${formatNumber(item.weight_kg)} kg`,
+    unit_price: formatNumber(item.unit_price),
+    total_amount: formatNumber(item.total_amount),
+    total_amount_words: moneyToVietnameseWords(item.total_amount),
+  };
+}
+
 function buildAuthorizationLetterTemplateData(item: SlipRow) {
   const purchaseDateParts = getDateParts(item.purchase_date);
   const authorizedPerson = item.authorizedRecipient;
@@ -1617,6 +1683,7 @@ type DossierTemplates = {
   contract: ArrayBuffer;
   deliveryReceipt: ArrayBuffer;
   authorizationLetter: ArrayBuffer;
+  purchaseStatement: ArrayBuffer;
 };
 
 async function loadDossierTemplates(): Promise<DossierTemplates> {
@@ -1624,6 +1691,7 @@ async function loadDossierTemplates(): Promise<DossierTemplates> {
     "/templates/purchase-contract-template.docx",
     "/templates/delivery-receipt-template.docx",
     "/templates/GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx",
+    "/templates/bang-ke.docx",
   ];
   const responses = await Promise.all(templatePaths.map((templatePath) => fetch(templatePath)));
   const failedTemplateIndex = responses.findIndex((response) => !response.ok);
@@ -1632,10 +1700,10 @@ async function loadDossierTemplates(): Promise<DossierTemplates> {
     throw new Error(`Không tìm thấy file mẫu tại ${templatePaths[failedTemplateIndex]}.`);
   }
 
-  const [contract, deliveryReceipt, authorizationLetter] = await Promise.all(
+  const [contract, deliveryReceipt, authorizationLetter, purchaseStatement] = await Promise.all(
     responses.map((response) => response.arrayBuffer()),
   );
-  return { contract, deliveryReceipt, authorizationLetter };
+  return { contract, deliveryReceipt, authorizationLetter, purchaseStatement };
 }
 
 function renderDocxBytes(templateBuffer: ArrayBuffer, data: Record<string, unknown>) {
@@ -1680,6 +1748,13 @@ async function buildDossierArchive(
       renderDocxBytes(
         templates.authorizationLetter.slice(0),
         buildAuthorizationLetterTemplateData(item),
+      ),
+    );
+    archive.file(
+      `${folderName}/04-bang-ke-thu-mua.docx`,
+      renderDocxBytes(
+        templates.purchaseStatement.slice(0),
+        buildPurchaseStatementTemplateData(item),
       ),
     );
 
@@ -1803,6 +1878,11 @@ function buildDeliveryReceiptFileName(item: SlipRow) {
 function buildAuthorizationLetterFileName(item: SlipRow) {
   const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
   return `giay-uy-quyen-${farmerName}.docx`;
+}
+
+function buildPurchaseStatementFileName(item: SlipRow) {
+  const farmerName = sanitizeFileName(item.farmer?.name?.trim() || "nong-dan");
+  return `bang-ke-thu-mua-${farmerName}.docx`;
 }
 
 function getDateParts(value: string | null | undefined) {

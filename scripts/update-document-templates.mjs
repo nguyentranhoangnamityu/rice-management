@@ -50,6 +50,83 @@ function replaceParagraph(xml, matcher, replacement) {
   return nextXml;
 }
 
+function replaceCellParagraph(cellXml, replacement, alignment = "left") {
+  const encodedText = encodeXmlText(replacement);
+  const runProperties = [
+    '<w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>',
+    '<w:color w:val="000000"/>',
+    '<w:sz w:val="18"/>',
+    '<w:szCs w:val="18"/>',
+  ].join("");
+
+  return cellXml.replace(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/, (paragraph) => {
+    const openingTag = paragraph.match(/^<w:p(?:\s[^>]*)?>/)?.[0] ?? "<w:p>";
+    let paragraphProperties = paragraph.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "<w:pPr/>";
+    const justification = `<w:jc w:val="${alignment}"/>`;
+
+    if (paragraphProperties === "<w:pPr/>") {
+      paragraphProperties = `<w:pPr>${justification}</w:pPr>`;
+    } else if (/<w:jc\b[^>]*\/>/.test(paragraphProperties)) {
+      paragraphProperties = paragraphProperties.replace(/<w:jc\b[^>]*\/>/, justification);
+    } else {
+      paragraphProperties = paragraphProperties.replace("</w:pPr>", `${justification}</w:pPr>`);
+    }
+
+    return `${openingTag}${paragraphProperties}<w:r><w:rPr>${runProperties}</w:rPr><w:t xml:space="preserve">${encodedText}</w:t></w:r></w:p>`;
+  });
+}
+
+function replaceFirstBlankPurchaseRow(xml, replacements) {
+  let tableFound = false;
+  let rowReplaced = false;
+
+  const nextXml = xml.replace(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g, (table) => {
+    if (tableFound || !decodeXmlText(table).includes("Ngày tháng năm mua hàng")) return table;
+    tableFound = true;
+
+    return table.replace(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g, (row) => {
+      if (rowReplaced || !/<w:trHeight\b/.test(row)) return row;
+
+      const cells = row.match(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g) ?? [];
+      if (cells.length !== replacements.length) return row;
+      if (cells.some((cell) => decodeXmlText(cell).trim().length > 0)) return row;
+
+      let cellIndex = 0;
+      const replacedRow = row.replace(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g, (cell) => {
+        const current = replacements[cellIndex];
+        cellIndex += 1;
+        return replaceCellParagraph(cell, current.text, current.alignment);
+      });
+      rowReplaced = true;
+      return replacedRow;
+    });
+  });
+
+  if (!tableFound) throw new Error("Không tìm thấy bảng dữ liệu trong mẫu bảng kê.");
+  if (!rowReplaced) throw new Error("Không tìm thấy dòng trống để gắn tag bảng kê.");
+  return nextXml;
+}
+
+function applyTimesNewRomanToPlaceholderRuns(xml) {
+  const fontProperties =
+    '<w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>';
+
+  return xml.replace(/<w:r(?:\s[^>]*)?>[\s\S]*?<\/w:r>/g, (run) => {
+    if (!decodeXmlText(run).includes("{{")) return run;
+
+    if (/<w:rPr>[\s\S]*?<\/w:rPr>/.test(run)) {
+      return run.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, (runProperties) => {
+        if (/<w:rFonts\b[^>]*\/>/.test(runProperties)) {
+          return runProperties.replace(/<w:rFonts\b[^>]*\/>/, fontProperties);
+        }
+        return runProperties.replace("<w:rPr>", `<w:rPr>${fontProperties}`);
+      });
+    }
+
+    return run.replace(/^(<w:r(?:\s[^>]*)?>)/, `$1<w:rPr>${fontProperties}</w:rPr>`);
+  });
+}
+
 async function patchTemplate(fileName, patcher) {
   const filePath = path.join(templateDir, fileName);
   const input = await fs.readFile(filePath);
@@ -57,7 +134,10 @@ async function patchTemplate(fileName, patcher) {
   const documentFile = zip.file("word/document.xml");
   if (!documentFile) throw new Error(`${fileName} không có word/document.xml`);
 
-  const patchedXml = patcher(documentFile.asText());
+  const originalXml = documentFile.asText();
+  const patchedXml = patcher(originalXml);
+  if (patchedXml === originalXml) return;
+
   zip.file("word/document.xml", patchedXml);
 
   const output = zip.generate({
@@ -161,9 +241,70 @@ await patchTemplate("GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx", (inputXml) => {
   return xml;
 });
 
+await patchTemplate("bang-ke.docx", (inputXml) => {
+  if (inputXml.includes("{{procurement_address}}")) {
+    const plainText = decodeXmlText(inputXml);
+    let patchedXml = inputXml;
+
+    if (plainText.includes("Ngày …. tháng")) {
+      patchedXml = replaceParagraph(
+        patchedXml,
+        (text) =>
+          text.trim() ===
+          "Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}}",
+        "Ngày tháng năm mua hàng",
+      );
+      patchedXml = replaceParagraph(
+        patchedXml,
+        (text) => text.trim().startsWith("Ngày ….") && text.includes("tháng") && text.includes("năm"),
+        "Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}}",
+      );
+    }
+
+    patchedXml = patchedXml.replaceAll("{{note}}", "");
+    return applyTimesNewRomanToPlaceholderRuns(patchedXml);
+  }
+
+  let xml = inputXml;
+  xml = replaceParagraph(
+    xml,
+    (text) => text.trim().startsWith("(Ngày") && text.includes("tháng") && text.includes("năm"),
+    "(Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}})",
+  );
+  xml = replaceParagraph(
+    xml,
+    (text) => text.trim().startsWith("- Địa chỉ nơi tổ chức thu mua:"),
+    "- Địa chỉ nơi tổ chức thu mua: {{procurement_address}}",
+  );
+  xml = replaceFirstBlankPurchaseRow(xml, [
+    { text: "{{purchase_date}}", alignment: "center" },
+    { text: "{{farmer_name}}", alignment: "left" },
+    { text: "{{farmer_permanent_address}}", alignment: "left" },
+    { text: "{{farmer_citizen_id}}", alignment: "center" },
+    { text: "{{farmer_phone}}", alignment: "center" },
+    { text: "{{rice_type}}", alignment: "left" },
+    { text: "{{quantity}}", alignment: "center" },
+    { text: "{{unit_price}}", alignment: "right" },
+    { text: "{{total_amount}}", alignment: "right" },
+    { text: "", alignment: "left" },
+  ]);
+  xml = replaceParagraph(
+    xml,
+    (text) => text.trim().startsWith("- Tổng giá trị hàng") && text.includes("Số tiền bằng chữ"),
+    "- Tổng giá trị hàng hóa, dịch vụ mua vào: {{total_amount}} (Số tiền bằng chữ: {{total_amount_words}})",
+  );
+  xml = replaceParagraph(
+    xml,
+    (text) =>
+      text.trim().startsWith("Ngày ….") && text.includes("tháng") && text.includes("năm"),
+    "Ngày {{statement_day}} tháng {{statement_month}} năm {{statement_year}}",
+  );
+  return applyTimesNewRomanToPlaceholderRuns(xml);
+});
+
 execFileSync(process.execPath, ["scripts/fix-authorization-signature-layout.mjs"], {
   cwd: rootDir,
   stdio: "inherit",
 });
 
-console.log("Đã cập nhật 3 mẫu DOCX.");
+console.log("Đã cập nhật 4 mẫu DOCX.");

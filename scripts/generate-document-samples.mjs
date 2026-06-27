@@ -193,6 +193,18 @@ for (const [index, row] of sourceRows.entries()) {
     ).trim(),
     payment_date: `${date.day}/${date.month}/${date.year}`,
   };
+  const purchaseStatementData = {
+    ...baseData,
+    statement_day: date.day,
+    statement_month: date.month,
+    statement_year: date.year,
+    procurement_address: farmerAddress,
+    purchase_date: `${date.day}/${date.month}/${date.year}`,
+    farmer_phone: "",
+    quantity: `${formatNumber(weight)} kg`,
+    unit_price: formatMoney(unitPrice),
+    total_amount: formatMoney(totalAmount),
+  };
   const prefix = `${String(index + 1).padStart(2, "0")}-${farmerName
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
@@ -203,15 +215,16 @@ for (const [index, row] of sourceRows.entries()) {
   await renderDocx("purchase-contract-template.docx", baseData, `${prefix}-hop-dong.docx`);
   await renderDocx("delivery-receipt-template.docx", baseData, `${prefix}-bien-ban.docx`);
   await renderDocx("GIAY_UY_QUYEN_CA_NHAN_TEMPLATE.docx", baseData, `${prefix}-uy-quyen.docx`);
+  await renderDocx("bang-ke.docx", purchaseStatementData, `${prefix}-bang-ke.docx`);
 }
 
 await fs.writeFile(
   path.join(outputDir, "README.txt"),
   [
     "Bộ tài liệu thử từ 2 dòng đầu của file Excel.",
-    "Mỗi dòng gồm: hợp đồng, biên bản giao nhận, giấy ủy quyền.",
+    "Mỗi dòng gồm: hợp đồng, biên bản giao nhận, giấy ủy quyền, bảng kê thu mua.",
     "Thành tiền được giữ nguyên từ Excel, không tính lại.",
   ].join("\n"),
 );
 
-console.log(`Đã tạo ${sourceRows.length * 3} tài liệu tại ${outputDir}`);
+console.log(`Đã tạo ${sourceRows.length * 4} tài liệu tại ${outputDir}`);
