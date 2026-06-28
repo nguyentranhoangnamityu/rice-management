@@ -8,6 +8,7 @@ export type QueryBuilder = any;
 
 export type ListQueryOptions = {
   search?: string;
+  pageSize?: number;
   applySearch?: (query: QueryBuilder, search: string) => QueryBuilder;
   /** Trả về chuỗi filter PostgREST cho `.or()` — không trả query builder trong async (sẽ bị await thực thi sớm). */
   resolveSearchFilter?: (search: string) => Promise<string | null>;
@@ -31,7 +32,8 @@ export async function fetchPaginatedList<T>(
   options: ListQueryOptions = {},
 ): Promise<PaginatedResult<T>> {
   const config = listTableConfig[table];
-  const { from, to, page: safePage } = getPageRange(page);
+  const pageSize = options.pageSize;
+  const { from, to, page: safePage } = getPageRange(page, pageSize);
   const search = options.search?.trim() ?? "";
 
   let query = supabase.from(table).select("*", { count: "exact" });
@@ -64,6 +66,6 @@ export async function fetchPaginatedList<T>(
     data: (data ?? []) as T[],
     total,
     page: safePage,
-    totalPages: getTotalPages(total),
+    totalPages: getTotalPages(total, pageSize),
   };
 }

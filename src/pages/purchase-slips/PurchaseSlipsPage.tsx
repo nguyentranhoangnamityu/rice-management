@@ -123,6 +123,7 @@ const slipQueryOptions = {
 
 type SlipListView = "contracts" | "delivery-receipts";
 type DossierStatusFilter = "all" | "pending" | "done";
+const PURCHASE_SLIPS_PAGE_SIZE = 50;
 
 export function PurchaseSlipsPage() {
   const location = useLocation();
@@ -205,7 +206,10 @@ export function PurchaseSlipsPage() {
     loading,
     error: listError,
     refresh,
-  } = useServerPagination<PurchaseSlip>("purchase_slips", { queryOptions });
+  } = useServerPagination<PurchaseSlip>("purchase_slips", {
+    queryOptions,
+    pageSize: PURCHASE_SLIPS_PAGE_SIZE,
+  });
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
@@ -1405,6 +1409,7 @@ export function PurchaseSlipsPage() {
               totalPages={totalPages}
               total={total}
               loading={loading}
+              pageSize={PURCHASE_SLIPS_PAGE_SIZE}
               onPageChange={setPage}
             />
             </>

@@ -6,12 +6,14 @@ import type { PaginatedResult } from "../lib/pagination";
 
 type UseServerPaginationOptions = {
   queryOptions?: Omit<ListQueryOptions, "search">;
+  pageSize?: number;
 };
 
 export function useServerPagination<T>(table: ListTableKey, options: UseServerPaginationOptions = {}) {
   const applyFilter = options.queryOptions?.applyFilter;
   const applySearch = options.queryOptions?.applySearch;
   const resolveSearchFilter = options.queryOptions?.resolveSearchFilter;
+  const pageSize = options.pageSize;
   const [items, setItems] = useState<T[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -37,9 +39,10 @@ export function useServerPagination<T>(table: ListTableKey, options: UseServerPa
         applySearch,
         resolveSearchFilter,
         search: debouncedSearch,
+        pageSize,
       });
     },
-    [table, debouncedSearch, applyFilter, applySearch, resolveSearchFilter],
+    [table, debouncedSearch, applyFilter, applySearch, resolveSearchFilter, pageSize],
   );
 
   const refresh = useCallback(

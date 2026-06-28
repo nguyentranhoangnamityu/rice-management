@@ -7,6 +7,7 @@ type PaginationControlsProps = {
   total: number;
   onPageChange: (page: number) => void;
   loading?: boolean;
+  pageSize?: number;
 };
 
 export function PaginationControls({
@@ -15,12 +16,14 @@ export function PaginationControls({
   total,
   onPageChange,
   loading = false,
+  pageSize = PAGE_SIZE,
 }: PaginationControlsProps) {
   const safeTotalPages = Math.max(1, totalPages);
   const canGoPrev = page > 1 && !loading;
   const canGoNext = page < safeTotalPages && !loading;
-  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const rangeEnd = total === 0 ? 0 : Math.min(page * PAGE_SIZE, total);
+  const safePageSize = Math.max(1, pageSize);
+  const rangeStart = total === 0 ? 0 : (page - 1) * safePageSize + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(page * safePageSize, total);
 
   return (
     <div className="pagination-bar" aria-label="Phân trang">
